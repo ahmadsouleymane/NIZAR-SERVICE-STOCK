@@ -1,0 +1,17 @@
+# Nizar Stock - Progress Ledger
+
+Task 1: complete (commits f091cc4)
+Task 2: complete (commits 5e015ad)
+Task 3: complete (commits 5e015ad)
+Task 4: complete (commits 5e015ad)
+Task 5: complete (commits 5e015ad)
+Task 6: complete (commits 5e015ad)
+Task 7: complete (commits 5e015ad)
+Task 8: complete (commits 5e015ad)
+Task 9: complete (commits acd2c36)
+Task 10: complete (commits acd2c36)
+Task 11: complete (commits acd2c36)
+Task 12: complete (commits acd2c36)
+Task 13: complete (commits acd2c36)
+Task 14: complete (commits acd2c36)
+Task 15: complete (commits acd2c36)

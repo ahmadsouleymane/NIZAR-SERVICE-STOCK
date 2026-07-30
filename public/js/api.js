@@ -262,5 +262,91 @@ const API = {
     return this.fetch('/api/users/' + id, {
       method: 'DELETE'
     });
+  },
+
+  // Localites
+  async getLocalites() {
+    return this.fetch('/api/localites');
+  },
+
+  async createLocalite(data) {
+    return this.fetch('/api/localites', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async deleteLocalite(id) {
+    return this.fetch('/api/localites/' + id, {
+      method: 'DELETE'
+    });
+  },
+
+  // Fiches de reception
+  async getFiches(params) {
+    var qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/fiches' + (qs ? '?' + qs : ''));
+  },
+
+  async getFiche(id) {
+    return this.fetch('/api/fiches/' + id);
+  },
+
+  async createFiche(data) {
+    return this.fetch('/api/fiches', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async changeStatutFiche(id, statut) {
+    return this.fetch('/api/fiches/' + id + '/statut', {
+      method: 'PATCH',
+      body: JSON.stringify({ statut: statut })
+    });
+  },
+
+  async uploadScanFiche(id, file) {
+    var token = this.getToken();
+    var formData = new FormData();
+    formData.append('scan', file);
+    var res = await fetch('/api/fiches/' + id + '/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    return res.json();
+  },
+
+  async deleteFiche(id) {
+    return this.fetch('/api/fiches/' + id, {
+      method: 'DELETE'
+    });
+  },
+
+  // Retours de carnets
+  async getRetours(params) {
+    var qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/retours' + (qs ? '?' + qs : ''));
+  },
+
+  async createRetour(data) {
+    return this.fetch('/api/retours', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  // Import Excel
+  async importExcel(file) {
+    var token = this.getToken();
+    var formData = new FormData();
+    formData.append('file', file);
+    var res = await fetch('/api/import/excel', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    return res.json();
   }
 };

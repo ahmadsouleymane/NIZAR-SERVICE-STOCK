@@ -9,11 +9,13 @@
     "db:init": "node database/init.js"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "better-sqlite3": "^11.0.0",
     "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
+    "better-sqlite3": "^11.0.0",
+    "cors": "^2.8.5",
     "exceljs": "^4.4.0",
-    "cors": "^2.8.5"
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^2.2.0",
+    "xlsx": "^0.18.5"
   }
 }

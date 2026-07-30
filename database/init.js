@@ -1,4 +1,4 @@
-// database/init.js
+// database/init.js — Nizar Stock v2
 const Database = require('better-sqlite3');
 const bcrypt = require('bcryptjs');
 const path = require('path');
@@ -26,6 +26,15 @@ function initDB(dbPath) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    -- Destinations / gares / agences
+    CREATE TABLE IF NOT EXISTS localites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      nom TEXT UNIQUE NOT NULL,
+      type TEXT NOT NULL DEFAULT 'national' CHECK(type IN ('national', 'international')),
+      pays TEXT DEFAULT 'Niger',
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS fournisseurs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       nom TEXT NOT NULL,
@@ -33,6 +42,7 @@ function initDB(dbPath) {
       telephone TEXT,
       email TEXT,
       adresse TEXT,
+      type TEXT NOT NULL DEFAULT 'externe' CHECK(type IN ('externe', 'interne')),
       delai_moyen_j INTEGER DEFAULT 7,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -44,6 +54,7 @@ function initDB(dbPath) {
       nom TEXT NOT NULL,
       categorie_id INTEGER REFERENCES categories(id) ON DELETE SET NULL,
       description TEXT,
+      type_article TEXT NOT NULL DEFAULT 'standard' CHECK(type_article IN ('standard', 'numerote')),
       unite TEXT DEFAULT 'piece',
       stock_min INTEGER DEFAULT 10,
       stock_actuel INTEGER DEFAULT 0,
@@ -51,6 +62,63 @@ function initDB(dbPath) {
       fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Fiches de reception
+    CREATE TABLE IF NOT EXISTS fiches_reception (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference TEXT UNIQUE NOT NULL,
+      date_creation TEXT DEFAULT (datetime('now')),
+      date_envoi TEXT,
+      localite_id INTEGER NOT NULL REFERENCES localites(id),
+      user_id INTEGER REFERENCES users(id),
+      statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'signee', 'archivee')),
+      notes TEXT,
+      fichier_path TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Lignes d'une fiche de reception
+    CREATE TABLE IF NOT EXISTS fiche_reception_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fiche_id INTEGER NOT NULL REFERENCES fiches_reception(id) ON DELETE CASCADE,
+      article_id INTEGER NOT NULL REFERENCES articles(id),
+      quantite INTEGER NOT NULL DEFAULT 1,
+      numero_debut TEXT,
+      numero_fin TEXT,
+      observation TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS mouvements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+      type TEXT NOT NULL CHECK(type IN ('entree', 'sortie')),
+      quantite INTEGER NOT NULL DEFAULT 1,
+      motif TEXT,
+      demandeur TEXT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
+      localite_id INTEGER REFERENCES localites(id) ON DELETE SET NULL,
+      fiche_id INTEGER REFERENCES fiches_reception(id) ON DELETE SET NULL,
+      commande_id INTEGER REFERENCES commandes(id) ON DELETE SET NULL,
+      date TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    -- Retours de carnets (usages ou non utilises)
+    CREATE TABLE IF NOT EXISTS retours_carnets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id INTEGER NOT NULL REFERENCES articles(id),
+      localite_id INTEGER REFERENCES localites(id),
+      type_retour TEXT NOT NULL CHECK(type_retour IN ('usage', 'non_utilise')),
+      quantite INTEGER NOT NULL DEFAULT 1,
+      numero_debut TEXT,
+      numero_fin TEXT,
+      motif TEXT,
+      user_id INTEGER REFERENCES users(id),
+      date_retour TEXT DEFAULT (datetime('now')),
+      created_at TEXT DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS commandes (
@@ -71,23 +139,9 @@ function initDB(dbPath) {
       quantite INTEGER NOT NULL DEFAULT 1,
       prix_unitaire REAL DEFAULT 0
     );
-
-    CREATE TABLE IF NOT EXISTS mouvements (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-      type TEXT NOT NULL CHECK(type IN ('entree', 'sortie')),
-      quantite INTEGER NOT NULL DEFAULT 1,
-      motif TEXT,
-      demandeur TEXT,
-      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-      fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
-      commande_id INTEGER REFERENCES commandes(id) ON DELETE SET NULL,
-      date TEXT DEFAULT (datetime('now')),
-      created_at TEXT DEFAULT (datetime('now'))
-    );
   `);
 
-  // Seed: comptes utilisateurs par defaut
+  // Seeds
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
   if (adminCount.count === 0) {
     const adminHash = bcrypt.hashSync('admin123', 10);
@@ -96,24 +150,44 @@ function initDB(dbPath) {
     db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('assistant', assistantHash, 'assistant');
   }
 
-  // Seed: categories par defaut
   const catCount = db.prepare('SELECT COUNT(*) as count FROM categories').get();
   if (catCount.count === 0) {
-    const cats = ['Papeterie', 'Cartouches et toners', 'Fournitures de bureau', 'Nettoyage', 'Autre'];
+    const cats = ['Documents de transport', 'Fournitures de bureau', 'Imprimes administratifs', 'Emballage', 'Autre'];
     const insert = db.prepare('INSERT INTO categories (name, description) VALUES (?, ?)');
-    for (const c of cats) {
-      insert.run(c, 'Categorie : ' + c);
-    }
+    for (const c of cats) { insert.run(c, 'Categorie : ' + c); }
+  }
+
+  const locCount = db.prepare('SELECT COUNT(*) as count FROM localites').get();
+  if (locCount.count === 0) {
+    const localites = [
+      { nom: 'Niamey', type: 'national', pays: 'Niger' },
+      { nom: 'Agadez', type: 'national', pays: 'Niger' },
+      { nom: 'Dosso', type: 'national', pays: 'Niger' },
+      { nom: 'Maradi', type: 'national', pays: 'Niger' },
+      { nom: 'Tahoua', type: 'national', pays: 'Niger' },
+      { nom: 'Zinder', type: 'national', pays: 'Niger' },
+      { nom: 'Abalak', type: 'national', pays: 'Niger' },
+      { nom: 'Arlit', type: 'national', pays: 'Niger' },
+      { nom: 'Konni', type: 'national', pays: 'Niger' },
+      { nom: 'Madaoua', type: 'national', pays: 'Niger' },
+      { nom: 'Gaya', type: 'national', pays: 'Niger' },
+      { nom: 'Tessaoua', type: 'national', pays: 'Niger' },
+      { nom: 'Doutchi', type: 'national', pays: 'Niger' },
+      { nom: 'Accra', type: 'international', pays: 'Ghana' },
+      { nom: 'Service Achat', type: 'national', pays: 'Niger' }
+    ];
+    const insertLoc = db.prepare('INSERT INTO localites (nom, type, pays) VALUES (?, ?, ?)');
+    for (const l of localites) { insertLoc.run(l.nom, l.type, l.pays); }
   }
 
   return db;
 }
 
-// Execution directe
 if (require.main === module) {
   const db = initDB();
-  console.log('Base de donnees initialisee avec succes.');
-  console.log('Comptes crees: admin/admin123, assistant/assistant123');
+  console.log('Base de donnees initialisee avec succes (v2).');
+  console.log('Comptes: admin/admin123, assistant/assistant123');
+  console.log('Localites: 15 destinations seedees.');
   db.close();
 }
 

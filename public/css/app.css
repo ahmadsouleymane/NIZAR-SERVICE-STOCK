@@ -133,9 +133,22 @@ a { color: var(--color-accent); text-decoration: none; }
   margin-bottom: 2rem;
 }
 
-.login-icon {
-  color: var(--color-primary);
+.login-logo {
+  width: 80px;
+  height: 80px;
+  border-radius: 16px;
+  object-fit: contain;
   margin-bottom: 0.75rem;
+  background: white;
+  padding: 4px;
+}
+
+.sidebar-logo {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  object-fit: contain;
+  flex-shrink: 0;
 }
 
 .login-header h1 {
@@ -268,6 +281,9 @@ a { color: var(--color-accent); text-decoration: none; }
   border-radius: var(--radius-sm);
 }
 .btn-icon:hover { background: var(--color-muted); }
+
+.btn-accent { background: var(--color-accent); color: #FFFFFF; }
+.btn-accent:hover:not(:disabled) { background: var(--color-accent-hover); }
 
 .btn-sm {
   padding: 0.375rem 0.75rem;

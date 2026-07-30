@@ -9,7 +9,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 // Initialiser la base de donnees
 const db = initDB();
@@ -30,6 +30,13 @@ app.use('/api/fournisseurs', require('./routes/fournisseurs'));
 app.use('/api/commandes', require('./routes/commandes'));
 app.use('/api/rapports', require('./routes/rapports'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/localites', require('./routes/localites'));
+app.use('/api/fiches', require('./routes/fiches_reception'));
+app.use('/api/retours', require('./routes/retours'));
+app.use('/api/import', require('./routes/import'));
+
+// Servir les uploads
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Servir les fichiers statiques du frontend
 app.use(express.static(path.join(__dirname, 'public')));

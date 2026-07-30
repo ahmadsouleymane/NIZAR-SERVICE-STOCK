@@ -3,3 +3,8 @@ database/*.db
 database/*.db-journal
 .env
 .DS_Store
+xlsx
+*.jpeg
+*.xlsx
+*.db-shm
+*.db-wal
