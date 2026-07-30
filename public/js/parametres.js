@@ -131,7 +131,7 @@ var Parametres = {
         API.createLocalite({ nom: nom, type: document.getElementById('loc-type').value, pays: document.getElementById('loc-pays').value.trim() })
           .then(function() { UI.toast('Localite ajoutee.', 'success'); m.close(); self._loadLocalites(); })
           .catch(function(err) { UI.toast(err.message, 'error'); });
-      }}]
+      } }
     ]);
   },
 
@@ -187,7 +187,7 @@ var Parametres = {
         if (password) data.password = password;
         var promise = isEdit ? API.updateUser(id, data) : API.createUser(data);
         promise.then(function() { UI.toast(isEdit ? 'Modifie.' : 'Cree.', 'success'); m.close(); self._loadUsers(); }).catch(function(err) { UI.toast(err.message, 'error'); });
-      }}]
+      } }
     ]);
   },
 

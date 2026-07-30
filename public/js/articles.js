@@ -249,7 +249,7 @@ var Articles = {
                 self._loadArticles();
               })
               .catch(function(err) { UI.toast(err.message, 'error'); });
-          } }]
+          } }
         ]);
       })
       .catch(function(err) { UI.toast(err.message, 'error'); });
