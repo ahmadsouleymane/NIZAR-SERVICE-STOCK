@@ -1,25 +1,23 @@
-// routes/fiches_reception.js
+// routes/fiches_reception.js — Fiches de reception + generation PDF auto
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { authenticate } = require('../middleware/auth');
+const { generateFichePDF } = require('../services/pdf');
 const router = express.Router();
 
-// Configuration multer pour l'upload des scans
 const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: uploadDir,
   filename: function(req, file, cb) {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, 'fiche-' + uniqueSuffix + path.extname(file.originalname));
+    cb(null, 'scan-' + Date.now() + path.extname(file.originalname));
   }
 });
 const upload = multer({ storage: storage, limits: { fileSize: 10 * 1024 * 1024 } });
 
-// Helper: generer reference fiche
 function generateRef(db) {
   const now = new Date();
   const y = now.getFullYear().toString().slice(-2);
@@ -28,7 +26,7 @@ function generateRef(db) {
   return 'FR-' + y + m + '-' + String(count + 1).padStart(3, '0');
 }
 
-// GET /api/fiches - liste
+// GET /api/fiches — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
   const { statut, localite_id, debut, fin } = req.query;
@@ -53,12 +51,11 @@ router.get('/', authenticate, (req, res) => {
   res.json({ fiches });
 });
 
-// GET /api/fiches/:id - detail avec lignes
+// GET /api/fiches/:id — detail
 router.get('/:id', authenticate, (req, res) => {
   const db = req.db;
   const fiche = db.prepare(`
-    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays,
-           u.username as cree_par
+    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, u.username as cree_par
     FROM fiches_reception fr
     LEFT JOIN localites l ON fr.localite_id = l.id
     LEFT JOIN users u ON fr.user_id = u.id
@@ -77,34 +74,34 @@ router.get('/:id', authenticate, (req, res) => {
   res.json({ fiche, lignes });
 });
 
-// POST /api/fiches - creer une fiche (depuis une sortie)
-router.post('/', authenticate, (req, res) => {
+// POST /api/fiches — creer un envoi + generer le PDF automatiquement
+router.post('/', authenticate, async (req, res) => {
   const db = req.db;
   const { localite_id, articles, notes } = req.body;
 
-  if (!localite_id) return res.status(400).json({ error: 'Localite (destination) requise.' });
+  if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
 
   const reference = generateRef(db);
+  let ficheId = null;
 
+  // Transaction DB
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, date_envoi)
       VALUES (?, ?, ?, 'envoyee', ?, datetime('now'))
     `).run(reference, localite_id, req.user.id, notes || null);
 
-    const ficheId = result.lastInsertRowid;
+    ficheId = result.lastInsertRowid;
 
     const insertLigne = db.prepare(`
       INSERT INTO fiche_reception_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation)
       VALUES (?, ?, ?, ?, ?, ?)
     `);
-
     const insertMvt = db.prepare(`
       INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, date)
-      VALUES (?, 'sortie', ?, 'Envoi vers localite', ?, ?, ?, datetime('now'))
+      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, datetime('now'))
     `);
-
     const updateStock = db.prepare(`
       UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now') WHERE id = ?
     `);
@@ -117,66 +114,110 @@ router.post('/', authenticate, (req, res) => {
       }
 
       insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
-      insertMvt.run(art.article_id, art.quantite, req.user.id, localite_id, ficheId);
+      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId);
       updateStock.run(art.quantite, art.article_id);
     }
-
-    return ficheId;
   });
 
   try {
-    const ficheId = transaction();
-    const fiche = db.prepare('SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?').get(ficheId);
-    res.status(201).json({ fiche });
+    transaction();
+
+    // Recuperer la fiche creee avec les infos pour le PDF
+    const fiche = db.prepare(`
+      SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays
+      FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+    `).get(ficheId);
+
+    const lignes = db.prepare(`
+      SELECT fra.*, a.nom as article_nom, a.unite
+      FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
+    `).all(ficheId);
+
+    // Generer le PDF
+    try {
+      const pdfPath = await generateFichePDF(fiche, lignes);
+      db.prepare('UPDATE fiches_reception SET fichier_path = ?, updated_at = datetime(\'now\') WHERE id = ?').run(pdfPath, ficheId);
+      fiche.fichier_path = pdfPath;
+    } catch (pdfErr) {
+      console.error('Erreur generation PDF:', pdfErr.message);
+      // On continue meme si le PDF echoue
+    }
+
+    res.status(201).json({ fiche, lignes });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-// PATCH /api/fiches/:id/statut - changer statut (signee, archivee)
+// GET /api/fiches/:id/pdf — telecharger le PDF
+router.get('/:id/pdf', authenticate, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
+
+  // Si on a un fichier_path, le servir
+  if (fiche.fichier_path) {
+    const fullPath = path.join(__dirname, '..', 'public', fiche.fichier_path);
+    if (fs.existsSync(fullPath)) {
+      return res.download(fullPath);
+    }
+  }
+
+  // Sinon regenerer le PDF
+  const lignes = db.prepare(`
+    SELECT fra.*, a.nom as article_nom, a.unite
+    FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
+  `).all(req.params.id);
+
+  const ficheInfo = db.prepare(`
+    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays
+    FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+  `).get(req.params.id);
+
+  generateFichePDF(ficheInfo, lignes)
+    .then(pdfPath => {
+      db.prepare('UPDATE fiches_reception SET fichier_path = ? WHERE id = ?').run(pdfPath, req.params.id);
+      const fullPath = path.join(__dirname, '..', 'public', pdfPath);
+      res.download(fullPath);
+    })
+    .catch(err => res.status(500).json({ error: 'Erreur generation PDF: ' + err.message }));
+});
+
+// PATCH /api/fiches/:id/statut — changer statut
 router.patch('/:id/statut', authenticate, (req, res) => {
   const db = req.db;
   const { statut } = req.body;
-  if (!['envoyee', 'signee', 'archivee'].includes(statut)) {
-    return res.status(400).json({ error: 'Statut invalide.' });
+  if (!['envoyee', 'archivee'].includes(statut)) {
+    return res.status(400).json({ error: 'Statut invalide (envoyee ou archivee).' });
   }
 
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
-  db.prepare('UPDATE fiches_reception SET statut = ?, updated_at = datetime(\'now\') WHERE id = ?')
-    .run(statut, req.params.id);
+  db.prepare('UPDATE fiches_reception SET statut = ?, updated_at = datetime(\'now\') WHERE id = ?').run(statut, req.params.id);
 
-  const updated = db.prepare('SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?').get(req.params.id);
-  res.json({ fiche: updated });
+  const updated = db.prepare(`
+    SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+  `).get(req.params.id);
+  res.json({ fiche: updated, message: 'Statut mis a jour : ' + statut });
 });
 
-// POST /api/fiches/:id/upload - uploader le scan de la fiche signee
+// POST /api/fiches/:id/upload — uploader le scan signe
 router.post('/:id/upload', authenticate, upload.single('scan'), (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
-
   if (!req.file) return res.status(400).json({ error: 'Fichier scan requis.' });
 
-  const filePath = '/uploads/' + req.file.filename;
-  db.prepare('UPDATE fiches_reception SET fichier_path = ?, statut = \'signee\', updated_at = datetime(\'now\') WHERE id = ?')
-    .run(filePath, req.params.id);
+  const scanPath = '/uploads/' + req.file.filename;
+  db.prepare('UPDATE fiches_reception SET fichier_path = ?, statut = \'archivee\', updated_at = datetime(\'now\') WHERE id = ?')
+    .run(scanPath, req.params.id);
 
-  const updated = db.prepare('SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?').get(req.params.id);
-  res.json({ fiche: updated, message: 'Scan uploadé avec succès.' });
-});
+  const updated = db.prepare(`
+    SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+  `).get(req.params.id);
 
-// DELETE /api/fiches/:id
-router.delete('/:id', authenticate, (req, res) => {
-  const db = req.db;
-  const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
-  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
-  if (fiche.statut !== 'brouillon') {
-    return res.status(400).json({ error: 'Seules les fiches en brouillon peuvent etre supprimees.' });
-  }
-  db.prepare('DELETE FROM fiches_reception WHERE id = ?').run(req.params.id);
-  res.json({ message: 'Fiche supprimee.' });
+  res.json({ fiche: updated, message: 'Scan uploade et fiche archivee.' });
 });
 
 module.exports = router;
