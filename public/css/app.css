@@ -3,27 +3,27 @@
    Data-Dense Dashboard, Touch-Optimized
    ============================================ */
 
-/* --- Design Tokens --- */
+/* --- Design Tokens — Palette Nizar Transport Voyageur --- */
 :root {
-  --color-bg: #F8FAFC;
-  --color-fg: #0F172A;
-  --color-primary: #334155;
-  --color-primary-hover: #1E293B;
-  --color-accent: #059669;
-  --color-accent-hover: #047857;
+  --color-bg: #F9FAFB;
+  --color-fg: #1A1A1A;
+  --color-primary: #1A1A1A;
+  --color-primary-hover: #333333;
+  --color-accent: #0EA5A0;
+  --color-accent-hover: #0B8A86;
   --color-surface: #FFFFFF;
-  --color-muted: #F1F5F9;
-  --color-border: #E2E8F0;
+  --color-muted: #F3F4F6;
+  --color-border: #E5E7EB;
   --color-destructive: #DC2626;
   --color-destructive-hover: #B91C1C;
   --color-success: #16A34A;
   --color-warning: #F59E0B;
   --color-danger: #DC2626;
-  --color-info: #2563EB;
+  --color-info: #0EA5A0;
   --color-success-bg: #DCFCE7;
   --color-warning-bg: #FEF9C3;
   --color-danger-bg: #FEE2E2;
-  --color-info-bg: #DBEAFE;
+  --color-info-bg: #E6F5F4;
   --topbar-height: 52px;
   --bottom-nav-height: 64px;
   --radius-sm: 8px;
@@ -39,24 +39,24 @@
 }
 
 [data-theme="dark"] {
-  --color-bg: #0F172A;
-  --color-fg: #F1F5F9;
-  --color-primary: #64748B;
-  --color-primary-hover: #94A3B8;
-  --color-accent: #10B981;
-  --color-accent-hover: #34D399;
-  --color-surface: #1E293B;
-  --color-muted: #334155;
-  --color-border: #334155;
+  --color-bg: #0F0F0F;
+  --color-fg: #F3F4F6;
+  --color-primary: #9CA3AF;
+  --color-primary-hover: #D1D5DB;
+  --color-accent: #14B8B0;
+  --color-accent-hover: #2DD4BF;
+  --color-surface: #1A1A1A;
+  --color-muted: #262626;
+  --color-border: #333333;
   --color-destructive: #EF4444;
   --color-destructive-hover: #F87171;
   --color-success-bg: #064E3B;
   --color-warning-bg: #78350F;
   --color-danger-bg: #7F1D1D;
-  --color-info-bg: #1E3A5F;
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
-  --shadow-lg: 0 8px 24px rgba(0,0,0,0.5);
+  --color-info-bg: #134E4A;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+  --shadow-lg: 0 8px 24px rgba(0,0,0,0.6);
 }
 
 /* --- Reset --- */
