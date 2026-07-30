@@ -165,11 +165,8 @@ var UI = {
   },
 
   initTheme: function() {
-    var saved = localStorage.getItem('nizar_theme');
-    if (saved) { document.documentElement.setAttribute('data-theme', saved); return; }
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-    }
+    // Light mode uniquement pour Nizar Stock
+    document.documentElement.setAttribute('data-theme', 'light');
   },
 
   debounce: function(fn, delay) {

@@ -216,7 +216,6 @@
       closeDrawer();
     });
 
-    document.getElementById('theme-toggle').addEventListener('click', function() { UI.toggleTheme(); });
     document.getElementById('menu-toggle').addEventListener('click', function() { openDrawer(); });
     document.getElementById('drawer-close').addEventListener('click', function() { closeDrawer(); });
     document.getElementById('sidebar-overlay').addEventListener('click', function() { closeDrawer(); });
