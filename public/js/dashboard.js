@@ -1,0 +1,88 @@
+// public/js/dashboard.js
+var Dashboard = {
+  render: function(container) {
+    container.innerHTML = '<div class="kpi-grid" id="kpi-grid">' + UI.renderSkeleton(4) + '</div>' +
+      '<div class="card"><div class="card-header"><h3 class="card-title">Derniers mouvements</h3></div><div id="recent-mvts">' + UI.renderSkeleton(5) + '</div></div>' +
+      '<div class="card"><div class="card-header"><h3 class="card-title">Alertes stock bas</h3></div><div id="top-alertes">' + UI.renderSkeleton(3) + '</div></div>';
+
+    API.getDashboard()
+      .then(function(data) {
+        Dashboard._renderKPI(data.kpi);
+        Dashboard._renderMouvements(data.mouvementsRecents);
+        Dashboard._renderAlertes(data.topAlertes);
+      })
+      .catch(function(err) {
+        container.innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
+      });
+  },
+
+  _renderKPI: function(kpi) {
+    var grid = document.getElementById('kpi-grid');
+    var items = [
+      { label: 'Total articles', value: kpi.totalArticles, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>', cls: '' },
+      { label: 'Alertes stock bas', value: kpi.alertesStock, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', cls: kpi.alertesStock > 0 ? 'danger' : 'success' },
+      { label: 'Mouvements du jour', value: kpi.mouvementsJour, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>', cls: '' },
+      { label: 'Commandes en cours', value: kpi.commandesEnCours, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>', cls: kpi.commandesEnCours > 0 ? 'warning' : '' }
+    ];
+
+    var html = '';
+    for (var i = 0; i < items.length; i++) {
+      html += '<div class="kpi-card">' +
+        '<div class="kpi-card-header">' + items[i].icon + '<span>' + items[i].label + '</span></div>' +
+        '<div class="kpi-card-value' + (items[i].cls ? ' ' + items[i].cls : '') + '">' + UI.formatNumber(items[i].value) + '</div>' +
+        '</div>';
+    }
+    grid.innerHTML = html;
+  },
+
+  _renderMouvements: function(mvts) {
+    var el = document.getElementById('recent-mvts');
+    if (!mvts || !mvts.length) {
+      el.innerHTML = UI.renderEmptyState('Aucun mouvement recent');
+      return;
+    }
+
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Date</th><th>Article</th><th>Type</th><th>Qté</th><th>Motif</th><th>Par</th></tr></thead><tbody>';
+
+    for (var i = 0; i < mvts.length; i++) {
+      var m = mvts[i];
+      html += '<tr>' +
+        '<td>' + UI.formatDate(m.date) + '</td>' +
+        '<td>' + UI.escapeHtml(m.article_nom || '-') + '</td>' +
+        '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entrée' : 'Sortie') + '</span></td>' +
+        '<td>' + m.quantite + '</td>' +
+        '<td>' + UI.escapeHtml(m.motif || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  },
+
+  _renderAlertes: function(alertes) {
+    var el = document.getElementById('top-alertes');
+    if (!alertes || !alertes.length) {
+      el.innerHTML = '<p class="text-success text-center" style="padding:1rem">Tous les stocks sont au-dessus des seuils minimums.</p>';
+      return;
+    }
+
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Article</th><th>Référence</th><th>Stock</th><th>Min</th><th>Fournisseur</th><th>Action</th>' +
+      '</tr></thead><tbody>';
+
+    for (var i = 0; i < alertes.length; i++) {
+      var a = alertes[i];
+      html += '<tr>' +
+        '<td><strong>' + UI.escapeHtml(a.nom) + '</strong></td>' +
+        '<td>' + UI.escapeHtml(a.reference) + '</td>' +
+        '<td>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' ' + a.stock_actuel + ' ' + UI.escapeHtml(a.unite) + '</td>' +
+        '<td>' + a.stock_min + '</td>' +
+        '<td>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</td>' +
+        '<td><a href="#commandes" class="btn btn-primary btn-sm">Commander</a></td>' +
+        '</tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  }
+};
