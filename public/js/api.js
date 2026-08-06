@@ -423,5 +423,25 @@ const API = {
       body: formData
     });
     return res.json();
+  },
+
+  // Tendance entrées/sorties des 14 derniers jours (tableau de bord)
+  async getTrends() {
+    return this.fetch('/api/trends');
+  },
+
+  // Compte des articles sous le seuil minimum (badge navigation)
+  async getAlertesCompte() {
+    return this.fetch('/api/alertes/compte');
+  },
+
+  // Recherche rapide globale : articles (nom/référence) + numéros de souche
+  async searchGlobal(q) {
+    return this.fetch('/api/recherche?q=' + encodeURIComponent(q));
+  },
+
+  // Billets en circulation (articles numérotés)
+  async getBillets() {
+    return this.fetch('/api/billets');
   }
 };

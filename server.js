@@ -41,6 +41,10 @@ app.use('/api/inventaires', require('./routes/inventaires'));
 app.use('/api/backup', require('./routes/backup'));
 app.use('/api/audit', require('./routes/audit'));
 app.use('/api/import', require('./routes/import'));
+app.use('/api/trends', require('./routes/trends'));
+app.use('/api/alertes', require('./routes/alertes'));
+app.use('/api/recherche', require('./routes/recherche'));
+app.use('/api/billets', require('./routes/billets'));
 
 // Servir les uploads
 app.use('/uploads', (req, res, next) => {
