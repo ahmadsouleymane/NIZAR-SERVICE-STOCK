@@ -78,7 +78,7 @@ var Articles = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Reference</th><th>Nom</th><th>Categorie</th><th>Stock</th><th>Min</th><th>Prix</th><th>Fournisseur</th><th>Actions</th></tr></thead><tbody>';
+      '<th>Référence</th><th>Nom</th><th>Catégorie</th><th>Stock</th><th>Min</th><th>Prix</th><th>Fournisseur</th><th>Actions</th></tr></thead><tbody>';
 
     var self = this;
     for (var i = 0; i < articles.length; i++) {
@@ -92,8 +92,7 @@ var Articles = {
         '<td>' + UI.formatPrice(a.prix_unitaire) + '</td>' +
         '<td>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</td>' +
         '<td class="actions">' +
-        '<button class="btn btn-sm btn-success btn-mvt" data-id="' + a.id + '" data-type="entree" title="Entree rapide">+</button>' +
-        '<button class="btn btn-sm btn-warning btn-mvt" data-id="' + a.id + '" data-type="sortie" title="Sortie rapide" style="background:var(--color-warning);color:#000">-</button>' +
+        '<button class="btn btn-sm btn-info btn-detail-art" data-id="' + a.id + '" title="Details (historique + series)">Details</button>' +
         '<button class="btn btn-sm btn-secondary btn-edit" data-id="' + a.id + '" title="Modifier">Modifier</button>' +
         '<button class="btn btn-sm btn-danger btn-delete" data-id="' + a.id + '" title="Supprimer">Suppr.</button>' +
         '</td>' +
@@ -103,14 +102,14 @@ var Articles = {
     el.innerHTML = html;
 
     // Bind events
-    var btns = el.querySelectorAll('.btn-edit, .btn-delete, .btn-mvt');
+    var btns = el.querySelectorAll('.btn-edit, .btn-delete, .btn-detail-art');
     for (var j = 0; j < btns.length; j++) {
       var btn = btns[j];
       btn.addEventListener('click', function() {
         var id = parseInt(this.getAttribute('data-id'));
         if (this.classList.contains('btn-edit')) self._showForm(id);
         else if (this.classList.contains('btn-delete')) self._deleteArticle(id);
-        else if (this.classList.contains('btn-mvt')) self._showMouvementRapide(id, this.getAttribute('data-type'));
+        else if (this.classList.contains('btn-detail-art')) self._showDetail(id);
       });
     }
   },
@@ -201,6 +200,74 @@ var Articles = {
       .catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
+  // Affiche le detail complet : infos, historique des mouvements et series de numeros
+  _showDetail: function(id) {
+    var self = this;
+    API.getArticle(id).then(function(data) {
+      var a = data.article;
+      var mouvements = data.mouvements || [];
+      var series = data.series || [];
+
+      var html = '<div style="font-size:0.9rem">' +
+        '<div class="flex-between mb-md"><div><strong>' + UI.escapeHtml(a.nom) + '</strong> <span class="text-sm text-muted">' + UI.escapeHtml(a.reference) + '</span></div>' +
+        '<div>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(a.unite) + '</div></div>' +
+        '<div class="summary-box" style="margin-bottom:1rem">' +
+        '<div class="summary-item">Categorie: <strong>' + UI.escapeHtml(a.categorie_nom || '-') + '</strong></div>' +
+        '<div class="summary-item">Fournisseur: <strong>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</strong></div>' +
+        '<div class="summary-item">Prix: <strong>' + UI.formatPrice(a.prix_unitaire) + '</strong></div>' +
+        '<div class="summary-item">Stock min: <strong>' + a.stock_min + '</strong></div>' +
+        '</div>';
+
+      // Historique des mouvements
+      html += '<h4 style="margin-bottom:0.5rem">Mouvements (' + mouvements.length + ')</h4>';
+      if (mouvements.length) {
+        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Type</th><th>Qte</th><th>Motif</th><th>Par</th></tr></thead><tbody>';
+        for (var i = 0; i < mouvements.length; i++) {
+          var m = mouvements[i];
+          var det = m.motif || '-';
+          html += '<tr>' +
+            '<td>' + UI.formatDate(m.date) + '</td>' +
+            '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entree' : 'Sortie') + '</span></td>' +
+            '<td><strong>' + m.quantite + '</strong></td>' +
+            '<td>' + UI.escapeHtml(det) + '</td>' +
+            '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table></div>';
+      } else {
+        html += '<p class="text-sm text-muted">Aucun mouvement.</p>';
+      }
+
+      // Series de numeros
+      if (series.length) {
+        html += '<h4 style="margin:1rem 0 0.5rem">Numeros de souche (' + series.length + ')</h4>';
+        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Plage</th><th>Qte</th><th>Evenement</th></tr></thead><tbody>';
+        for (var j = 0; j < series.length; j++) {
+          var s = series[j];
+          var evt = '';
+          if (s.source_type === 'entree') evt = '<span class="badge badge-success">Entree</span>';
+          else if (s.source_type === 'sortie') evt = '<span class="badge badge-warning">Sortie' + (s.localite_nom ? ' ' + UI.escapeHtml(s.localite_nom) : '') + '</span>';
+          else evt = s.type_retour === 'non_utilise' ? '<span class="badge badge-success">Retour (stock)</span>' : '<span class="badge badge-neutral">Retour usage</span>';
+          html += '<tr>' +
+            '<td>' + UI.formatDate(s.date) + '</td>' +
+            '<td>' + UI.escapeHtml(s.numero_debut) + ' — ' + UI.escapeHtml(s.numero_fin) + '</td>' +
+            '<td>' + s.quantite + '</td>' +
+            '<td>' + evt + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table></div>';
+      }
+
+      html += '</div>';
+
+      var actions = [
+        { label: 'Modifier', cls: 'btn-secondary', callback: function(m) { m.close(); self._showForm(id); } },
+        { label: 'Fermer', cls: 'btn-secondary', callback: function(m) { m.close(); } }
+      ];
+      UI.modal('Détail article', html, actions);
+    }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
   _deleteArticle: function(id) {
     var self = this;
     UI.confirm('Supprimer definitivement cet article ? Les mouvements associes seront conserves.')
@@ -210,48 +277,5 @@ var Articles = {
           .then(function() { UI.toast('Article supprime.', 'success'); self._loadArticles(); })
           .catch(function(err) { UI.toast(err.message, 'error'); });
       });
-  },
-
-  _showMouvementRapide: function(articleId, type) {
-    var self = this;
-    API.getArticle(articleId)
-      .then(function(data) {
-        var a = data.article;
-        var titre = type === 'entree' ? 'Entree rapide - ' + a.nom : 'Sortie rapide - ' + a.nom;
-
-        var motifsSortie = ['Distribution au personnel', 'Perime/Endommage', 'Transfert', 'Autre'];
-        var motifOptions = '<option value="">--</option>';
-        for (var i = 0; i < motifsSortie.length; i++) {
-          motifOptions += '<option value="' + motifsSortie[i] + '">' + motifsSortie[i] + '</option>';
-        }
-
-        var formHtml =
-          '<p style="margin-bottom:0.75rem">Stock actuel: <strong>' + a.stock_actuel + ' ' + UI.escapeHtml(a.unite) + '</strong></p>' +
-          '<div class="form-group"><label class="form-label">Quantite *</label><input type="number" class="form-input" id="mvt-qte" value="1" min="1" required></div>' +
-          '<div class="form-group"><label class="form-label">Motif</label>' +
-          (type === 'sortie' ? '<select class="form-select" id="mvt-motif">' + motifOptions + '</select>' : '<input type="text" class="form-input" id="mvt-motif" value="Reapprovisionnement">') +
-          '</div>' +
-          '<div class="form-group"><label class="form-label">Demandeur</label><input type="text" class="form-input" id="mvt-demandeur" placeholder="Nom du collaborateur (optionnel)"></div>';
-
-        var modal = UI.modal(titre, formHtml, [
-          { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-          { label: 'Enregistrer', cls: 'btn-primary', callback: function(m) {
-            var qte = parseInt(document.getElementById('mvt-qte').value);
-            var motif = document.getElementById('mvt-motif').value || null;
-            var demandeur = document.getElementById('mvt-demandeur').value.trim() || null;
-
-            if (!qte || qte < 1) { UI.toast('Quantite requise.', 'error'); return; }
-
-            API.createMouvement({ article_id: articleId, type: type, quantite: qte, motif: motif, demandeur: demandeur })
-              .then(function() {
-                UI.toast('Mouvement enregistre.', 'success');
-                m.close();
-                self._loadArticles();
-              })
-              .catch(function(err) { UI.toast(err.message, 'error'); });
-          } }
-        ]);
-      })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
   }
 };

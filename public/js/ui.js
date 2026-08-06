@@ -8,6 +8,28 @@ var UI = {
     return this._toastContainer;
   },
 
+  // === Fermeture des dropdowns autocomplete au clic exterieur (listener unique) ===
+  _acRegistry: [],
+  _acOutsideInit: false,
+  _registerAutocompleteOutsideClose: function(wrapper, dropdown) {
+    var self = this;
+    this._acRegistry.push({ wrapper: wrapper, dropdown: dropdown });
+    // Garder le registre borne : purger les wrappers sortis du DOM
+    if (this._acRegistry.length > 120) {
+      this._acRegistry = this._acRegistry.filter(function(r) { return document.contains(r.wrapper); });
+    }
+    if (this._acOutsideInit) return;
+    this._acOutsideInit = true;
+    document.addEventListener('click', function(e) {
+      for (var i = 0; i < self._acRegistry.length; i++) {
+        var reg = self._acRegistry[i];
+        if (reg.wrapper && reg.dropdown && !reg.wrapper.contains(e.target)) {
+          reg.dropdown.style.display = 'none';
+        }
+      }
+    });
+  },
+
   // Toast notification
   toast: function(message, type) {
     type = type || 'info';
@@ -118,12 +140,17 @@ var UI = {
   },
 
   // Autocompletion (recherche avec suggestions) — articles, fournisseurs, etc.
-  // options: { items:[{id,label,meta}], onSelect(item), onAdd(text), placeholder, allowAdd }
-  // Retourne un controleur : { value() -> item|null, text() -> string, set(id), clear(), destroy() }
+  // options: {
+  //   items: [{id,label,meta}]            // filtrage local (defaut)
+  //   search(term, cb): cb([{id,label,meta}])  // recherche serveur (lazy) si fournie
+  //   onSelect(item), onAdd(text), placeholder, allowAdd
+  // }
+  // Retourne un controleur : { value(), text(), set(id), setItem(item), clear(), destroy() }
   autocomplete: function(container, options) {
     var self = this;
     options = options || {};
     var items = options.items || [];
+    var serverItems = [];
     var selected = null;
 
     var input = document.createElement('input');
@@ -142,14 +169,7 @@ var UI = {
     wrapper.appendChild(dropdown);
     container.appendChild(wrapper);
 
-    function render(filter) {
-      filter = (filter || '').toLowerCase();
-      var matches = [];
-      for (var i = 0; i < items.length; i++) {
-        var it = items[i];
-        if (!filter || (it.label + ' ' + (it.meta || '')).toLowerCase().indexOf(filter) !== -1) matches.push(it);
-        if (matches.length >= 40) break;
-      }
+    function renderMatches(matches, filter) {
       var html = '';
       for (var j = 0; j < matches.length; j++) {
         var m = matches[j];
@@ -183,8 +203,35 @@ var UI = {
       });
     }
 
+    function render(filter) {
+      filter = (filter || '').toLowerCase();
+      if (options.search) {
+        // Recherche serveur (lazy) : evite de charger tout le catalogue
+        options.search(filter, function(results) {
+          serverItems = results || [];
+          renderMatches(serverItems, filter);
+        });
+        return;
+      }
+      var matches = [];
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!filter || (it.label + ' ' + (it.meta || '')).toLowerCase().indexOf(filter) !== -1) matches.push(it);
+        if (matches.length >= 40) break;
+      }
+      renderMatches(matches, filter);
+    }
+
+    var debouncedSearch = self.debounce(function() {
+      var v = input.value.trim();
+      if (!v) { dropdown.style.display = 'none'; return; }
+      selected = null;
+      render(v);
+    }, 250);
+
     input.addEventListener('input', function() {
       selected = null;
+      if (options.search) { debouncedSearch(); return; }
       var v = input.value.trim();
       if (!v) { dropdown.style.display = 'none'; return; }
       render(v);
@@ -192,21 +239,30 @@ var UI = {
     input.addEventListener('focus', function() {
       if (input.value.trim()) render(input.value.trim());
     });
-    document.addEventListener('click', function outside(e) {
-      if (!wrapper.contains(e.target)) dropdown.style.display = 'none';
-    });
+    // Fermeture au clic exterieur : UN SEUL listener delege au niveau module
+    // (evite d'empiler un listener document par instance autocomplete)
+    UI._registerAutocompleteOutsideClose(wrapper, dropdown);
 
     return {
       value: function() { return selected; },
       text: function() { return input.value.trim(); },
       set: function(id) {
-        for (var i = 0; i < items.length; i++) {
-          if (String(items[i].id) === String(id)) {
-            selected = items[i];
-            input.value = items[i].label;
+        var pool = items.concat(serverItems);
+        for (var i = 0; i < pool.length; i++) {
+          if (String(pool[i].id) === String(id)) {
+            selected = pool[i];
+            input.value = pool[i].label;
+            if (options.onSelect) options.onSelect(pool[i]);
             return;
           }
         }
+      },
+      // Restaure une selection a partir d'un item complet (utilise lors d'un re-render)
+      setItem: function(item) {
+        if (!item) return;
+        selected = item;
+        input.value = item.label;
+        if (options.onSelect) options.onSelect(item);
       },
       clear: function() { selected = null; input.value = ''; },
       destroy: function() {}
@@ -232,6 +288,53 @@ var UI = {
     if (stock <= 0) return '<span class="badge badge-danger">Rupture</span>';
     if (stock <= min) return '<span class="badge badge-warning">Bas</span>';
     return '<span class="badge badge-success">OK</span>';
+  },
+
+  // === Tables responsives : transforme les .table-wrapper en cartes sur mobile ===
+  // Ajoute automatiquement data-label sur chaque <td> depuis les <th> du thead.
+  _applyResponsiveTable: function(wrapper) {
+    if (!wrapper || wrapper.dataset.responsiveApplied) return;
+    wrapper.dataset.responsiveApplied = '1';
+    wrapper.classList.add('responsive-table');
+    var table = wrapper.querySelector('table');
+    if (!table) return;
+    var ths = table.querySelectorAll('thead th');
+    var labels = [];
+    for (var i = 0; i < ths.length; i++) labels.push(ths[i].textContent.trim());
+    var rows = table.querySelectorAll('tbody tr');
+    for (var r = 0; r < rows.length; r++) {
+      var tds = rows[r].querySelectorAll('td');
+      for (var c = 0; c < tds.length; c++) {
+        if (labels[c]) tds[c].setAttribute('data-label', labels[c]);
+      }
+    }
+  },
+
+  _respObserver: null,
+  initResponsiveTables: function() {
+    var self = this;
+    // Appliquer aux tables deja presentes
+    var existing = document.querySelectorAll('.table-wrapper');
+    for (var e = 0; e < existing.length; e++) self._applyResponsiveTable(existing[e]);
+    if (this._respObserver) return;
+    // Observer les insertions futures (listes, modales, details)
+    this._respObserver = new MutationObserver(function(muts) {
+      for (var m = 0; m < muts.length; m++) {
+        var nodes = muts[m].addedNodes;
+        for (var n = 0; n < nodes.length; n++) {
+          var node = nodes[n];
+          if (node.nodeType !== 1) continue;
+          if (node.classList && node.classList.contains('table-wrapper')) {
+            self._applyResponsiveTable(node);
+          }
+          if (node.querySelectorAll) {
+            var wrappers = node.querySelectorAll('.table-wrapper');
+            for (var w = 0; w < wrappers.length; w++) self._applyResponsiveTable(wrappers[w]);
+          }
+        }
+      }
+    });
+    this._respObserver.observe(document.body, { childList: true, subtree: true });
   },
 
   renderEmptyState: function(msg, actionLabel, actionHash) {

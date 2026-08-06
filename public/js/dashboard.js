@@ -3,7 +3,7 @@ var Dashboard = {
   render: function(container) {
     container.innerHTML = '<div class="kpi-grid" id="kpi-grid">' + UI.renderSkeleton(4) + '</div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Derniers mouvements</h3></div><div id="recent-mvts">' + UI.renderSkeleton(5) + '</div></div>' +
-      '<div class="card"><div class="card-header"><h3 class="card-title">Dernieres entrees fournisseur</h3></div><div id="recent-entrees">' + UI.renderSkeleton(4) + '</div></div>' +
+      '<div class="card"><div class="card-header"><h3 class="card-title">Dernières entrées fournisseur</h3></div><div id="recent-entrees">' + UI.renderSkeleton(4) + '</div></div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Alertes stock bas</h3></div><div id="top-alertes">' + UI.renderSkeleton(3) + '</div></div>';
 
     API.getDashboard()

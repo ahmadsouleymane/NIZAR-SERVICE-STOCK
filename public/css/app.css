@@ -177,6 +177,8 @@ a{color:var(--color-accent);text-decoration:none}
 .kpi-card{background:var(--color-surface);border:1px solid var(--color-border);border-radius:var(--radius-md);padding:0.875rem;display:flex;flex-direction:column;gap:0.375rem;transition:all var(--transition)}
 .kpi-card:active{transform:scale(0.98)}
 .kpi-card-icon{display:flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:var(--radius-sm);background:var(--color-muted)}
+.kpi-card-header{display:flex;align-items:center;gap:0.5rem;font-size:0.75rem;color:var(--color-primary);font-weight:500}
+.kpi-card-header svg{color:var(--color-accent);flex-shrink:0}
 .kpi-card-label{font-size:0.75rem;color:var(--color-primary);font-weight:500}
 .kpi-card-value{font-family:var(--font-heading);font-size:1.5rem;font-weight:700;color:var(--color-fg);line-height:1}
 .kpi-card-value.danger{color:var(--color-danger)}

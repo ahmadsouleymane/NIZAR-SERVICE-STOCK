@@ -6,43 +6,66 @@ var Entrees = {
   _fournAC: null,
 
   render: function(container) {
+    this._offset = 0;
+    this._all = [];
+    this._hasMore = true;
+
     container.innerHTML =
       '<div class="card">' +
       '<div class="card-header flex-between">' +
-      '<h3 class="card-title">Entrees fournisseur</h3>' +
+      '<h3 class="card-title">Entrées fournisseur</h3>' +
       '<button class="btn btn-primary" id="btn-new-entree">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-      ' Nouvelle entree</button>' +
+      ' Nouvelle entrée</button>' +
       '</div>' +
       '<div class="filter-bar">' +
-      '<select class="form-select" id="entree-statut"><option value="">Tous statuts</option><option value="validee">Validee</option><option value="archivee">Archivee</option></select>' +
+      '<select class="form-select" id="entree-statut"><option value="">Tous statuts</option><option value="validee">Validée</option><option value="archivee">Archivée</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-entrees-refresh">Actualiser</button>' +
       '</div>' +
       '<p class="text-sm text-muted mb-md">Les articles arrivent avec le bon de livraison et la facture du fournisseur — aucune impression depuis l app. Les photos de ces documents peuvent etre archivees.</p>' +
       '<div id="entrees-table">' + UI.renderSkeleton(6) + '</div>' +
+      '<div id="entrees-more" class="text-center mt-md"></div>' +
       '</div>';
 
-    this._load();
+    this._load(true);
     this._bindEvents();
   },
 
   _bindEvents: function() {
     var self = this;
     document.getElementById('btn-new-entree').addEventListener('click', function() { self._showForm(); });
-    document.getElementById('entree-statut').addEventListener('change', function() { self._load(); });
-    document.getElementById('btn-entrees-refresh').addEventListener('click', function() { self._load(); });
+    document.getElementById('entree-statut').addEventListener('change', function() { self._load(true); });
+    document.getElementById('btn-entrees-refresh').addEventListener('click', function() { self._load(true); });
   },
 
-  _load: function() {
+  _load: function(reset) {
     var self = this;
-    var params = {};
+    if (reset) { this._offset = 0; this._all = []; this._hasMore = true; }
+
+    var params = { offset: this._offset };
     var s = document.getElementById('entree-statut').value;
     if (s) params.statut = s;
 
-    API.getEntrees(params).then(function(data) { self._renderTable(data.fiches); })
+    API.getEntrees(params).then(function(data) {
+      if (reset) self._all = data.fiches;
+      else self._all = self._all.concat(data.fiches);
+      self._hasMore = data.fiches.length >= 50;
+      self._offset += data.fiches.length;
+      self._renderTable(self._all);
+      self._renderMore();
+    })
       .catch(function(err) {
         document.getElementById('entrees-table').innerHTML = '<div class="empty-state"><p>' + UI.escapeHtml(err.message) + '</p></div>';
       });
+  },
+
+  _renderMore: function() {
+    var el = document.getElementById('entrees-more');
+    if (!el) return;
+    if (!this._hasMore) { el.innerHTML = ''; return; }
+    var self = this;
+    el.innerHTML = '<button class="btn btn-secondary btn-sm" id="btn-entrees-more">Voir plus</button>';
+    document.getElementById('btn-entrees-more').addEventListener('click', function() { self._load(false); });
   },
 
   _renderTable: function(fiches) {
@@ -51,7 +74,7 @@ var Entrees = {
 
     var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Reference</th><th>Date</th><th>Fournisseur</th><th>N° BL</th><th>N° facture</th><th>Photos</th><th>Statut</th><th>Actions</th>' +
+      '<th>Référence</th><th>Date</th><th>Fournisseur</th><th>N° BL</th><th>N° facture</th><th>Photos</th><th>Statut</th><th>Actions</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < fiches.length; i++) {
@@ -64,7 +87,7 @@ var Entrees = {
         '<td>' + UI.escapeHtml(f.numero_bl || '-') + '</td>' +
         '<td>' + UI.escapeHtml(f.numero_facture || '-') + '</td>' +
         '<td>' + (f.nb_photos > 0 ? '<span class="badge badge-info">' + f.nb_photos + '</span>' : '<span class="text-muted">—</span>') + '</td>' +
-        '<td><span class="badge ' + statutCls + '">' + (f.statut === 'archivee' ? 'Archivee' : 'Validee') + '</span></td>' +
+        '<td><span class="badge ' + statutCls + '">' + (f.statut === 'archivee' ? 'Archivée' : 'Validée') + '</span></td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-entree" data-id="' + f.id + '">Details</button>';
       if (f.statut !== 'archivee') {
@@ -89,14 +112,10 @@ var Entrees = {
 
   _showForm: function() {
     var self = this;
-    Promise.all([API.getFournisseurs(), API.getArticles()]).then(function(results) {
-      var fournisseurs = results[0].fournisseurs;
-      var articles = results[1].articles;
+    API.getFournisseurs().then(function(results) {
+      var fournisseurs = results.fournisseurs;
 
-      self._articleItems = articles.map(function(a) {
-        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
-      });
-      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' }];
+      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
       self._acLignes = [];
       self._fournAC = null;
 
@@ -128,7 +147,7 @@ var Entrees = {
       });
 
       document.getElementById('btn-add-line').addEventListener('click', function() {
-        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' });
+        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' });
         self._refreshLignes();
       });
       self._refreshLignes();
@@ -162,12 +181,20 @@ var Entrees = {
     container.querySelectorAll('.art-ac').forEach(function(el) {
       var idx = parseInt(el.dataset.idx);
       var ac = UI.autocomplete(el, {
-        items: self._articleItems,
+        items: [],
         placeholder: 'Rechercher un article...',
+        search: function(term, cb) {
+          API.getArticles({ search: term }).then(function(data) {
+            cb(data.articles.map(function(a) {
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+            }));
+          }).catch(function() { cb([]); });
+        },
         onSelect: function(item) {
           var l = self._lignes[idx];
           l.article_id = item.id;
           l.article_type = item.type;
+          l.article_nom = item.label;
           var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
           if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
         }
@@ -175,7 +202,7 @@ var Entrees = {
       self._acLignes[idx] = ac;
       // Restaurer l'état après un re-render (ajout/suppression de ligne)
       if (self._lignes[idx] && self._lignes[idx].article_id) {
-        ac.set(self._lignes[idx].article_id);
+        ac.setItem({ id: self._lignes[idx].article_id, label: self._lignes[idx].article_nom || '', type: self._lignes[idx].article_type });
         var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
         if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
       }

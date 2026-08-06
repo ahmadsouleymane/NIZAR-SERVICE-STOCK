@@ -34,7 +34,7 @@ var Fournisseurs = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Nom</th><th>Contact</th><th>Telephone</th><th>Email</th><th>Delai</th><th>Articles</th><th>Actions</th>' +
+      '<th>Nom</th><th>Contact</th><th>Téléphone</th><th>Email</th><th>Délai</th><th>Articles</th><th>Actions</th>' +
       '</tr></thead><tbody>';
 
     var self = this;

@@ -7,17 +7,20 @@ var Commandes = {
       '<div class="card">' +
       '<div class="card-header">' +
       '<h3 class="card-title">Commandes fournisseurs</h3>' +
+      '<div class="flex-between gap-sm">' +
+      '<button class="btn btn-secondary" id="btn-auto-cmd" title="Generer une commande a partir des articles en alerte"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg> Commande auto</button>' +
       '<button class="btn btn-primary" id="btn-add-cmd">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
       ' Nouvelle commande</button>' +
+      '</div>' +
       '</div>' +
       '<div class="filter-bar">' +
       '<select class="form-select" id="filtre-statut">' +
       '<option value="tous">Tous statuts</option>' +
       '<option value="brouillon">Brouillon</option>' +
-      '<option value="envoyee">Envoyee</option>' +
-      '<option value="recue">Recue</option>' +
-      '<option value="annulee">Annulee</option>' +
+      '<option value="envoyee">Envoyée</option>' +
+      '<option value="recue">Reçue</option>' +
+      '<option value="annulee">Annulée</option>' +
       '</select>' +
       '</div>' +
       '<div id="commandes-table">' + UI.renderSkeleton(6) + '</div>' +
@@ -30,7 +33,25 @@ var Commandes = {
   _bindEvents: function() {
     var self = this;
     document.getElementById('btn-add-cmd').addEventListener('click', function() { self._showCreateForm(); });
+    document.getElementById('btn-auto-cmd').addEventListener('click', function() { self._showCommandeAuto(); });
     document.getElementById('filtre-statut').addEventListener('change', function() { self._load(); });
+  },
+
+  // Genere une commande brouillon a partir des articles sous le seuil minimum.
+  // Quantite suggeree = de quoi remonter au double du seuil : 2*stock_min - stock_actuel.
+  _showCommandeAuto: function() {
+    var self = this;
+    API.getArticles({ alerte: '1' }).then(function(data) {
+      if (!data.articles.length) { UI.toast('Aucun article sous le seuil minimum. Stock OK.', 'success'); return; }
+
+      var lignes = data.articles.map(function(a) {
+        var qte = Math.max(1, a.stock_min * 2 - a.stock_actuel);
+        return { article_id: a.id, quantite: qte, prix_unitaire: a.prix_unitaire || 0 };
+      });
+
+      UI.toast('Commande pre-remplie avec ' + lignes.length + ' article(s) en alerte.', 'info');
+      self._showCreateForm(null, lignes);
+    }).catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
   _load: function() {
@@ -75,7 +96,7 @@ var Commandes = {
           '<button class="btn btn-sm btn-secondary btn-edit-cmd" data-id="' + c.id + '" title="Modifier">Modifier</button>';
       }
       if (c.statut === 'envoyee') {
-        html += '<button class="btn btn-sm btn-success btn-recevoir" data-id="' + c.id + '" title="Marquer recue">Recue</button>';
+        html += '<button class="btn btn-sm btn-success btn-recevoir" data-id="' + c.id + '" title="Marquer reçue">Reçue</button>';
       }
       if (c.statut !== 'recue') {
         html += '<button class="btn btn-sm btn-warning btn-annuler" data-id="' + c.id + '" title="Annuler" style="color:#000">Annuler</button>';
@@ -163,7 +184,7 @@ var Commandes = {
       .catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
-  _showCreateForm: function(id) {
+  _showCreateForm: function(id, prefillLignes) {
     var self = this;
     var isEdit = !!id;
 
@@ -184,7 +205,9 @@ var Commandes = {
           articleOptions += '<option value="' + a.id + '" data-prix="' + a.prix_unitaire + '">' + UI.escapeHtml(a.nom) + ' (' + UI.escapeHtml(a.reference) + ')' + alerte + '</option>';
         }
 
-        self._lignes = [{ article_id: '', quantite: 1, prix_unitaire: 0 }];
+        self._lignes = (prefillLignes && prefillLignes.length)
+          ? prefillLignes.map(function(l) { return { article_id: l.article_id, quantite: l.quantite, prix_unitaire: l.prix_unitaire }; })
+          : [{ article_id: '', quantite: 1, prix_unitaire: 0 }];
         self._articleOptionsCmd = articleOptions;
 
         self._renderLignesCmd = function() {
@@ -221,6 +244,14 @@ var Commandes = {
         });
 
         self._bindLignesEvents(document.getElementById('lignes-container'));
+
+        // Pre-fill si commande auto (articles en alerte)
+        if (prefillLignes && prefillLignes.length) {
+          var selPrefill = document.querySelectorAll('.art-select');
+          for (var pf = 0; pf < selPrefill.length; pf++) {
+            if (self._lignes[pf]) selPrefill[pf].value = self._lignes[pf].article_id;
+          }
+        }
 
         // Pre-fill if editing
         if (isEdit) {

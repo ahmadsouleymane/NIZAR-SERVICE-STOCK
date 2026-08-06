@@ -5,27 +5,32 @@ var Fiches = {
   _acLignes: [],
 
   render: function(container) {
+    this._offset = 0;
+    this._all = [];
+    this._hasMore = true;
+
     container.innerHTML =
-      '<div class="card"><div class="card-header flex-between"><h3 class="card-title">Fiches de reception</h3>' +
+      '<div class="card"><div class="card-header flex-between"><h3 class="card-title">Fiches de réception</h3>' +
       '<button class="btn btn-primary" id="btn-new-envoi"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvel envoi</button>' +
       '</div>' +
       '<div class="filter-bar">' +
-      '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Sortie validee</option><option value="signee">OK — Retour recu</option><option value="archivee">Archivee</option></select>' +
+      '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Sortie validée</option><option value="signee">OK — Retour reçu</option><option value="archivee">Archivée</option></select>' +
       '<select class="form-select" id="fiche-localite"><option value="">Toutes destinations</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-fiches-refresh">Actualiser</button>' +
-      '</div><div id="fiches-table">' + UI.renderSkeleton(6) + '</div></div>';
+      '</div><div id="fiches-table">' + UI.renderSkeleton(6) + '</div>' +
+      '<div id="fiches-more" class="text-center mt-md"></div></div>';
 
     this._loadLocalites();
-    this._load();
+    this._load(true);
     this._bindEvents();
   },
 
   _bindEvents: function() {
     var self = this;
     document.getElementById('btn-new-envoi').addEventListener('click', function() { self._showEnvoiForm(); });
-    document.getElementById('fiche-statut').addEventListener('change', function() { self._load(); });
-    document.getElementById('fiche-localite').addEventListener('change', function() { self._load(); });
-    document.getElementById('btn-fiches-refresh').addEventListener('click', function() { self._load(); });
+    document.getElementById('fiche-statut').addEventListener('change', function() { self._load(true); });
+    document.getElementById('fiche-localite').addEventListener('change', function() { self._load(true); });
+    document.getElementById('btn-fiches-refresh').addEventListener('click', function() { self._load(true); });
   },
 
   _loadLocalites: function() {
@@ -43,16 +48,34 @@ var Fiches = {
     }).catch(function() {});
   },
 
-  _load: function() {
+  _load: function(reset) {
     var self = this;
-    var params = {};
+    if (reset) { this._offset = 0; this._all = []; this._hasMore = true; }
+
+    var params = { offset: this._offset };
     var s = document.getElementById('fiche-statut').value;
     var l = document.getElementById('fiche-localite').value;
     if (s) params.statut = s;
     if (l) params.localite_id = l;
 
-    API.getFiches(params).then(function(data) { self._renderTable(data.fiches); })
+    API.getFiches(params).then(function(data) {
+      if (reset) self._all = data.fiches;
+      else self._all = self._all.concat(data.fiches);
+      self._hasMore = data.fiches.length >= 50;
+      self._offset += data.fiches.length;
+      self._renderTable(self._all);
+      self._renderMore();
+    })
       .catch(function(err) { document.getElementById('fiches-table').innerHTML = '<div class="empty-state"><p>' + UI.escapeHtml(err.message) + '</p></div>'; });
+  },
+
+  _renderMore: function() {
+    var el = document.getElementById('fiches-more');
+    if (!el) return;
+    if (!this._hasMore) { el.innerHTML = ''; return; }
+    var self = this;
+    el.innerHTML = '<button class="btn btn-secondary btn-sm" id="btn-fiches-more">Voir plus</button>';
+    document.getElementById('btn-fiches-more').addEventListener('click', function() { self._load(false); });
   },
 
   _renderTable: function(fiches) {
@@ -60,11 +83,11 @@ var Fiches = {
     if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune fiche', 'Creer un envoi', 'fiches'); return; }
 
     var self = this;
-    var html = '<div class="table-wrapper"><table><thead><tr><th>Reference</th><th>Date</th><th>Destination</th><th>Statut</th><th>Lignes</th><th>PDF</th><th>Scan</th><th>Actions</th></tr></thead><tbody>';
+    var html = '<div class="table-wrapper"><table><thead><tr><th>Référence</th><th>Date</th><th>Destination</th><th>Statut</th><th>Lignes</th><th>PDF</th><th>Scan</th><th>Actions</th></tr></thead><tbody>';
 
     for (var i = 0; i < fiches.length; i++) {
       var f = fiches[i];
-      var statutLabel = f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee');
+      var statutLabel = f.statut === 'envoyee' ? 'Sortie validée' : (f.statut === 'signee' ? 'OK — Retour reçu' : 'Archivée');
       var statutCls = f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral');
 
       html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong></td>' +
@@ -73,7 +96,7 @@ var Fiches = {
         '<td><span class="badge ' + statutCls + '">' + statutLabel + '</span></td>' +
         '<td>' + (f.nb_lignes || 0) + '</td>' +
         '<td>' + (f.fichier_path ? '<a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
-        '<td>' + (f.fichier_path && (f.statut === 'archivee' || f.statut === 'signee') ? '<span class="badge badge-success">Scanne</span>' : '<span class="badge badge-warning">En attente</span>') + '</td>' +
+        '<td>' + (f.scan_path ? '<span class="badge badge-success">Scanné</span>' : (f.statut === 'envoyee' ? '<span class="badge badge-warning">En attente</span>' : '<span class="text-muted">—</span>')) + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-fiche" data-id="' + f.id + '">Details</button>' +
         '<button class="btn btn-sm btn-accent btn-dl-pdf" data-id="' + f.id + '">PDF</button>';
@@ -107,9 +130,8 @@ var Fiches = {
 
   _showEnvoiForm: function() {
     var self = this;
-    Promise.all([API.getLocalites(), API.getArticles()]).then(function(results) {
-      var localites = results[0].localites;
-      var articles = results[1].articles;
+    API.getLocalites().then(function(results) {
+      var localites = results.localites;
 
       var locOptions = '<option value="">Choisir la destination...</option>';
       var agences = '<optgroup label="Agences">';
@@ -121,10 +143,7 @@ var Fiches = {
       }
       locOptions += agences + '</optgroup>' + services + '</optgroup>';
 
-      self._articleItems = articles.map(function(a) {
-        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
-      });
-      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' }];
+      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
       self._acLignes = [];
 
       var body =
@@ -139,7 +158,7 @@ var Fiches = {
       ]);
 
       document.getElementById('btn-add-line').addEventListener('click', function() {
-        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' });
+        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' });
         self._renderLignesEnvoi();
       });
       self._renderLignesEnvoi();
@@ -173,19 +192,27 @@ var Fiches = {
     container.querySelectorAll('.art-envoi-ac').forEach(function(el) {
       var idx = parseInt(el.dataset.idx);
       var ac = UI.autocomplete(el, {
-        items: self._articleItems,
+        items: [],
         placeholder: 'Rechercher un article...',
+        search: function(term, cb) {
+          API.getArticles({ search: term }).then(function(data) {
+            cb(data.articles.map(function(a) {
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+            }));
+          }).catch(function() { cb([]); });
+        },
         onSelect: function(item) {
           var l = self._lignes[idx];
           l.article_id = item.id;
           l.article_type = item.type;
+          l.article_nom = item.label;
           var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
           if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
         }
       });
       self._acLignes[idx] = ac;
       if (self._lignes[idx] && self._lignes[idx].article_id) {
-        ac.set(self._lignes[idx].article_id);
+        ac.setItem({ id: self._lignes[idx].article_id, label: self._lignes[idx].article_nom || '', type: self._lignes[idx].article_type });
         var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
         if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
       }
@@ -259,12 +286,11 @@ var Fiches = {
         html += '</tbody></table></div>';
       }
 
-      if (f.fichier_path) {
-        if (f.fichier_path.endsWith('.pdf')) {
-          html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Telecharger le PDF</a></div>';
-        } else {
-          html += '<div class="mt-md"><strong>Scan signe:</strong><br><img src="' + UI.escapeHtml(f.fichier_path) + '" style="max-width:100%;max-height:250px;border:1px solid var(--color-border);border-radius:8px;margin-top:0.5rem"></div>';
-        }
+      if (f.fichier_path && f.fichier_path.endsWith('.pdf')) {
+        html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Telecharger le PDF (re-imprimable)</a></div>';
+      }
+      if (f.scan_path) {
+        html += '<div class="mt-md"><strong>Scan signe (archive):</strong><br><img src="' + UI.escapeHtml(f.scan_path) + '" style="max-width:100%;max-height:250px;border:1px solid var(--color-border);border-radius:8px;margin-top:0.5rem"></div>';
       }
 
       html += '</div>';
@@ -286,11 +312,6 @@ var Fiches = {
 
   _downloadPDF: function(id) {
     var token = API.getToken();
-    var a = document.createElement('a');
-    a.href = '/api/fiches/' + id + '/pdf';
-    a.target = '_blank';
-    // Ajouter le token dans l'URL pour l'auth (le serveur attend un header Bearer, donc on passe par le navigateur)
-    // Alternative: telecharger via fetch
     fetch('/api/fiches/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } })
       .then(function(res) {
         if (!res.ok) throw new Error('Erreur');

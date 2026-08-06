@@ -13,7 +13,7 @@ var Parametres = {
       '<div id="categories-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Localites (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Localites / Agences / Services</h3>' +
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Localités / Agences / Services</h3>' +
       '<button class="btn btn-primary btn-sm" id="btn-add-loc">Ajouter une localite</button></div>' +
       '<div id="localites-list">' + UI.renderSkeleton(5) + '</div></div>' : '') +
 
@@ -23,14 +23,23 @@ var Parametres = {
       '<div id="users-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Import Excel (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Importer des donnees</h3></div>' +
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Importer des données</h3></div>' +
       '<p class="text-sm text-muted mb-sm">Importer un fichier Excel (.xlsx) contenant l\'historique des mouvements.</p>' +
       '<div class="flex-between gap-sm"><input type="file" class="form-input" id="import-file" accept=".xlsx" style="max-width:350px">' +
       '<button class="btn btn-accent btn-sm" id="btn-import" style="background:var(--color-accent);color:#fff">Importer Excel</button></div>' +
       '<div id="import-result" class="mt-sm"></div></div>' : '') +
 
+      // Sauvegarde de la base (admin only)
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Sauvegarde de la base</h3></div>' +
+      '<p class="text-sm text-muted mb-sm">Telecharger un instantane complet de la base (donnees + archives). Conservez ces fichiers dans un endroit sur.</p>' +
+      '<button class="btn btn-accent btn-sm" id="btn-backup" style="background:var(--color-accent);color:#fff">Sauvegarder (.db)</button></div>' : '') +
+
+      // Journal d'audit (admin only)
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Journal d\'audit</h3></div>' +
+      '<div id="audit-log">' + UI.renderSkeleton(4) + '</div></div>' : '') +
+
       // Preferences
-      '<div class="card"><div class="card-header"><h3 class="card-title">Preferences</h3></div>' +
+      '<div class="card"><div class="card-header"><h3 class="card-title">Préférences</h3></div>' +
       '<div class="form-group"><label class="form-label">Mot de passe actuel</label>' +
       '<input type="password" class="form-input" id="current-password" placeholder="Votre mot de passe actuel" style="max-width:350px"></div>' +
       '<div class="form-group"><label class="form-label">Nouveau mot de passe</label>' +
@@ -42,6 +51,7 @@ var Parametres = {
       this._loadCategories();
       this._loadLocalites();
       this._loadUsers();
+      this._loadAuditLog();
     }
     this._bindEvents();
   },
@@ -55,6 +65,7 @@ var Parametres = {
       document.getElementById('btn-add-loc').addEventListener('click', function() { self._showLocaliteForm(); });
       document.getElementById('btn-add-user').addEventListener('click', function() { self._showUserForm(); });
       document.getElementById('btn-import').addEventListener('click', function() { self._importExcel(); });
+      document.getElementById('btn-backup').addEventListener('click', function() { self._backupDB(); });
     }
     document.getElementById('btn-change-password').addEventListener('click', function() { self._changePassword(); });
   },
@@ -231,6 +242,34 @@ var Parametres = {
         document.getElementById('btn-import').textContent = 'Importer Excel';
         input.value = '';
       });
+  },
+
+  // === Sauvegarde de la base ===
+  _backupDB: function() {
+    var btn = document.getElementById('btn-backup');
+    btn.disabled = true;
+    var original = btn.textContent;
+    btn.textContent = 'Sauvegarde en cours...';
+    API.downloadBackup()
+      .then(function() { UI.toast('Sauvegarde telechargee.', 'success'); })
+      .catch(function(err) { UI.toast('Erreur sauvegarde: ' + err.message, 'error'); })
+      .finally(function() { btn.disabled = false; btn.textContent = original; });
+  },
+
+  // === Journal d'audit ===
+  _loadAuditLog: function() {
+    API.getAuditLog().then(function(data) {
+      var el = document.getElementById('audit-log');
+      if (!el) return;
+      if (!data.logs.length) { el.innerHTML = '<p class="text-muted text-center">Aucune operation sensible enregistree.</p>'; return; }
+      var html = '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Utilisateur</th><th>Action</th><th>Details</th></tr></thead><tbody>';
+      for (var i = 0; i < data.logs.length; i++) {
+        var lg = data.logs[i];
+        html += '<tr><td>' + UI.formatDate(lg.date) + '</td><td>' + UI.escapeHtml(lg.username || '-') + '</td><td>' + UI.escapeHtml(lg.action) + '</td><td>' + UI.escapeHtml(lg.details || '') + '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+      el.innerHTML = html;
+    }).catch(function() {});
   },
 
   // === Preferences ===

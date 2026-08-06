@@ -1,10 +1,18 @@
-// public/js/mouvements.js
+// public/js/mouvements.js — Historique des mouvements (entrées + sorties)
 var Mouvements = {
+  _offset: 0,
+  _all: [],
+  _hasMore: true,
+
   render: function(container) {
     var today = new Date().toISOString().split('T')[0];
     var lastMonth = new Date();
     lastMonth.setMonth(lastMonth.getMonth() - 1);
     var lastMonthStr = lastMonth.toISOString().split('T')[0];
+
+    this._offset = 0;
+    this._all = [];
+    this._hasMore = true;
 
     container.innerHTML =
       '<div class="card">' +
@@ -14,39 +22,49 @@ var Mouvements = {
       '<div class="filter-bar">' +
       '<input type="date" class="form-input" id="filtre-debut" value="' + lastMonthStr + '" style="min-width:140px">' +
       '<input type="date" class="form-input" id="filtre-fin" value="' + today + '" style="min-width:140px">' +
-      '<select class="form-select" id="filtre-type"><option value="">Tous types</option><option value="entree">Entrees</option><option value="sortie">Sorties</option></select>' +
+      '<select class="form-select" id="filtre-type"><option value="">Tous types</option><option value="entree">Entrées</option><option value="sortie">Sorties</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-refresh">Actualiser</button>' +
       '</div>' +
       '<div id="mouvements-summary" class="summary-box">' +
-      '<div class="summary-item">Entrees: <strong id="sum-entrees">-</strong></div>' +
+      '<div class="summary-item">Entrées: <strong id="sum-entrees">-</strong></div>' +
       '<div class="summary-item">Sorties: <strong id="sum-sorties">-</strong></div>' +
       '<div class="summary-item">Solde: <strong id="sum-solde">-</strong></div>' +
       '</div>' +
       '<div id="mouvements-table">' + UI.renderSkeleton(10) + '</div>' +
+      '<div id="mouvements-more" class="text-center mt-md"></div>' +
       '</div>';
 
-    this._loadMouvements();
+    this._loadMouvements(true);
     this._bindEvents();
   },
 
   _bindEvents: function() {
     var self = this;
-    document.getElementById('btn-refresh').addEventListener('click', function() { self._loadMouvements(); });
-    document.getElementById('filtre-type').addEventListener('change', function() { self._loadMouvements(); });
+    document.getElementById('btn-refresh').addEventListener('click', function() { self._loadMouvements(true); });
+    document.getElementById('filtre-type').addEventListener('change', function() { self._loadMouvements(true); });
   },
 
-  _loadMouvements: function() {
+  _loadMouvements: function(reset) {
     var self = this;
+    if (reset) { this._offset = 0; this._all = []; this._hasMore = true; }
+
     var params = {
       debut: document.getElementById('filtre-debut').value,
-      fin: document.getElementById('filtre-fin').value
+      fin: document.getElementById('filtre-fin').value,
+      offset: this._offset
     };
     var type = document.getElementById('filtre-type').value;
     if (type) params.type = type;
 
     API.getMouvements(params)
       .then(function(data) {
-        self._renderTable(data.mouvements);
+        if (reset) self._all = data.mouvements;
+        else self._all = self._all.concat(data.mouvements);
+        self._hasMore = data.mouvements.length >= 50;
+        self._offset += data.mouvements.length;
+        self._renderTable(self._all);
+        self._renderMore();
+
         document.getElementById('sum-entrees').textContent = UI.formatNumber(data.totals.total_entrees);
         document.getElementById('sum-sorties').textContent = UI.formatNumber(data.totals.total_sorties);
         var solde = data.totals.total_entrees - data.totals.total_sorties;
@@ -57,6 +75,15 @@ var Mouvements = {
       .catch(function(err) {
         document.getElementById('mouvements-table').innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
       });
+  },
+
+  _renderMore: function() {
+    var el = document.getElementById('mouvements-more');
+    if (!el) return;
+    if (!this._hasMore) { el.innerHTML = ''; return; }
+    var self = this;
+    el.innerHTML = '<button class="btn btn-secondary btn-sm" id="btn-mvts-more">Voir plus</button>';
+    document.getElementById('btn-mvts-more').addEventListener('click', function() { self._loadMouvements(false); });
   },
 
   _renderTable: function(mvts) {
@@ -75,7 +102,7 @@ var Mouvements = {
       html += '<tr>' +
         '<td>' + UI.formatDate(m.date) + '</td>' +
         '<td><strong>' + UI.escapeHtml(m.article_nom || '-') + '</strong><br><span class="text-sm text-muted">' + UI.escapeHtml(m.article_reference || '') + '</span></td>' +
-        '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entree' : 'Sortie') + '</span></td>' +
+        '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entrée' : 'Sortie') + '</span></td>' +
         '<td><strong>' + m.quantite + '</strong></td>' +
         '<td>' + UI.escapeHtml(m.motif || '-') + '</td>' +
         '<td>' + UI.escapeHtml(m.demandeur || '-') + '</td>' +

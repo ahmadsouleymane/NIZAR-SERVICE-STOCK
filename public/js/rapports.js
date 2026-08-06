@@ -12,9 +12,9 @@ var Rapports = {
       '<div class="card">' +
       '<h4 style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
-      'Etat du stock</h4>' +
+      'État du stock</h4>' +
       '<p class="text-sm text-muted" style="margin-bottom:1rem">Export complet de tous les articles avec leur stock actuel, statut et fournisseur.</p>' +
-      '<button class="btn btn-primary btn-full" id="btn-export-stock">Telecharger Excel</button>' +
+      '<button class="btn btn-primary btn-full" id="btn-export-stock">Télécharger Excel</button>' +
       '</div>' +
       // Carte 2: Historique mouvements
       '<div class="card">' +
@@ -25,7 +25,7 @@ var Rapports = {
       '<div class="form-group"><label class="form-label text-sm">Du</label><input type="date" class="form-input" id="rpt-debut" value="' + lastMonthStr + '"></div>' +
       '<div class="form-group"><label class="form-label text-sm">Au</label><input type="date" class="form-input" id="rpt-fin" value="' + today + '"></div>' +
       '</div>' +
-      '<button class="btn btn-primary btn-full" id="btn-export-mouvements">Telecharger Excel</button>' +
+      '<button class="btn btn-primary btn-full" id="btn-export-mouvements">Télécharger Excel</button>' +
       '</div>' +
       // Carte 3: Consommation
       '<div class="card">' +
@@ -36,7 +36,7 @@ var Rapports = {
       '<div class="form-group"><label class="form-label text-sm">Du</label><input type="date" class="form-input" id="conso-debut" value="' + lastMonthStr + '"></div>' +
       '<div class="form-group"><label class="form-label text-sm">Au</label><input type="date" class="form-input" id="conso-fin" value="' + today + '"></div>' +
       '</div>' +
-      '<button class="btn btn-primary btn-full" id="btn-export-conso">Telecharger Excel</button>' +
+      '<button class="btn btn-primary btn-full" id="btn-export-conso">Télécharger Excel</button>' +
       '</div>' +
       '</div>';
 
