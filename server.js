@@ -38,7 +38,10 @@ app.use('/api/series', require('./routes/series'));
 app.use('/api/import', require('./routes/import'));
 
 // Servir les uploads
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  next();
+}, express.static(path.join(__dirname, 'public', 'uploads')));
 
 // Servir les fichiers statiques du frontend
 app.use(express.static(path.join(__dirname, 'public')));
@@ -53,7 +56,10 @@ app.get('*', (req, res) => {
 
 // Gestionnaire d'erreurs global — transforme les erreurs SQLite et autres en JSON
 app.use((err, req, res, next) => {
-  // Erreur Multer (fichier trop volumineux, etc.)
+  // Erreur Multer (fichier trop volumineux, type non autorise, etc.)
+  if (err.code === 'LIMIT_FILE_TYPE') {
+    return res.status(400).json({ error: err.message || 'Type de fichier non autorise.' });
+  }
   if (err.code === 'LIMIT_FILE_SIZE') {
     return res.status(400).json({ error: 'Fichier trop volumineux (max 10 Mo).' });
   }

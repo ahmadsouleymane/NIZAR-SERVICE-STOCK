@@ -1,22 +1,11 @@
 // routes/entrees.js — Entrees fournisseur (enregistrement sans impression)
 const express = require('express');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { checkOverlap, recordSerie } = require('../services/series');
+const { checkOverlap, recordSerie, parseNumero } = require('../services/series');
+const { createUpload } = require('../services/uploads');
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: function(req, file, cb) {
-    cb(null, 'photo-' + Date.now() + '-' + Math.round(Math.random() * 1e9) + path.extname(file.originalname));
-  }
-});
-const upload = multer({ storage: storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = createUpload('photo');
 
 function generateRef(db) {
   const now = new Date();
@@ -119,6 +108,9 @@ router.post('/', authenticate, (req, res) => {
         if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
 
         if (article.type_article === 'numerote') {
+          if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
+            throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
+          }
           const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'entree');
           if (overlap) throw new Error('Chevauchement pour ' + article.nom + ' : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
           recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'entree', ficheId);
@@ -148,7 +140,7 @@ router.post('/', authenticate, (req, res) => {
 });
 
 // POST /api/entrees/:id/photos — upload photo bon de livraison / facture
-router.post('/:id/photos', authenticate, upload.single('photo'), (req, res) => {
+router.post('/:id/photos', authenticate, upload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });

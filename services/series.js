@@ -20,6 +20,7 @@ function checkOverlap(db, article_id, numero_debut, numero_fin, source_type) {
     WHERE s.article_id = ? AND s.source_type = ?
       AND CAST(s.numero_debut AS INTEGER) <= ?
       AND CAST(s.numero_fin AS INTEGER) >= ?
+    ORDER BY s.id
     LIMIT 1
   `).get(article_id, source_type, f, d) || null;
 }

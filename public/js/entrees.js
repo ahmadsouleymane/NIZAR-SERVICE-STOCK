@@ -218,7 +218,7 @@ var Entrees = {
         for (var p = 0; p < photos.length; p++) {
           var label = photos[p].type === 'bl' ? 'Bon de livraison' : (photos[p].type === 'facture' ? 'Facture' : 'Autre');
           html += '<div style="width:120px;text-align:center">' +
-            '<a href="' + photos[p].fichier_path + '" target="_blank"><img src="' + photos[p].fichier_path + '" style="width:100%;height:90px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px"></a>' +
+            '<a href="' + UI.escapeHtml(photos[p].fichier_path) + '" target="_blank"><img src="' + UI.escapeHtml(photos[p].fichier_path) + '" style="width:100%;height:90px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px"></a>' +
             '<span class="text-sm">' + label + '</span></div>';
         }
       } else {
@@ -245,15 +245,21 @@ var Entrees = {
       var file = this.files[0];
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
-      UI.confirm('C\'est le bon de livraison ? (Oui = BL, Non = Facture/Autre)').then(function(isBl) {
-        var type = isBl ? 'bl' : 'facture';
+
+      function upload(type) {
         UI.toast('Enregistrement de la photo...', 'info');
         API.uploadEntreePhoto(id, file, type).then(function(data) {
           if (data.error) { UI.toast(data.error, 'error'); return; }
           UI.toast('Photo archivee.', 'success');
           self._load();
         }).catch(function(err) { UI.toast(err.message, 'error'); });
-      });
+      }
+
+      UI.modal('Archiver la photo', '<p>Type de document ?</p>', [
+        { label: 'Bon de livraison', cls: 'btn-primary', callback: function(m) { m.close(); upload('bl'); } },
+        { label: 'Facture / Autre', cls: 'btn-secondary', callback: function(m) { m.close(); upload('facture'); } },
+        { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } }
+      ]);
     });
     input.click();
   },

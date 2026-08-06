@@ -1,23 +1,14 @@
 // routes/fiches_reception.js — Fiches de reception + generation PDF auto
 const express = require('express');
-const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { generateFichePDF } = require('../services/pdf');
-const { checkOverlap, recordSerie } = require('../services/series');
+const { checkOverlap, recordSerie, parseNumero } = require('../services/series');
+const { createUpload } = require('../services/uploads');
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: function(req, file, cb) {
-    cb(null, 'scan-' + Date.now() + path.extname(file.originalname));
-  }
-});
-const upload = multer({ storage: storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = createUpload('scan');
 
 function generateRef(db) {
   const now = new Date();
@@ -129,6 +120,9 @@ router.post('/', authenticate, async (req, res) => {
       }
 
       if (article.type_article === 'numerote') {
+        if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
+          throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
+        }
         const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'sortie');
         if (overlap) throw new Error('Chevauchement : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja envoyee (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
         recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'sortie', ficheId);
@@ -224,7 +218,7 @@ router.patch('/:id/statut', authenticate, (req, res) => {
 });
 
 // POST /api/fiches/:id/upload — uploader le scan signe
-router.post('/:id/upload', authenticate, upload.single('scan'), (req, res) => {
+router.post('/:id/upload', authenticate, upload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
@@ -250,6 +244,8 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const transaction = db.transaction(() => {
     // Supprimer les mouvements lies
     db.prepare('DELETE FROM mouvements WHERE fiche_id = ?').run(req.params.id);
+    // Supprimer les numeros de souche lies a cette sortie
+    db.prepare("DELETE FROM series_numeros WHERE source_type = 'sortie' AND source_id = ?").run(req.params.id);
     // Supprimer les lignes de la fiche
     db.prepare('DELETE FROM fiche_reception_articles WHERE fiche_id = ?').run(req.params.id);
     // Supprimer la fiche

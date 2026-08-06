@@ -8,7 +8,7 @@ var Fiches = {
       '<button class="btn btn-primary" id="btn-new-envoi"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvel envoi</button>' +
       '</div>' +
       '<div class="filter-bar">' +
-      '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Sortie validee</option><option value="archivee">Archivee</option></select>' +
+      '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Sortie validee</option><option value="signee">OK — Retour recu</option><option value="archivee">Archivee</option></select>' +
       '<select class="form-select" id="fiche-localite"><option value="">Toutes destinations</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-fiches-refresh">Actualiser</button>' +
       '</div><div id="fiches-table">' + UI.renderSkeleton(6) + '</div></div>';
@@ -69,7 +69,7 @@ var Fiches = {
         '<td><span class="badge ' + statutCls + '">' + statutLabel + '</span></td>' +
         '<td>' + (f.nb_lignes || 0) + '</td>' +
         '<td>' + (f.fichier_path ? '<a href="' + f.fichier_path + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
-        '<td>' + (f.fichier_path && f.statut === 'archivee' ? '<span class="badge badge-success">Scanne</span>' : '<span class="badge badge-warning">En attente</span>') + '</td>' +
+        '<td>' + (f.fichier_path && (f.statut === 'archivee' || f.statut === 'signee') ? '<span class="badge badge-success">Scanne</span>' : '<span class="badge badge-warning">En attente</span>') + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-fiche" data-id="' + f.id + '">Details</button>' +
         '<button class="btn btn-sm btn-accent btn-dl-pdf" data-id="' + f.id + '">PDF</button>';
@@ -225,16 +225,16 @@ var Fiches = {
       if (lignes.length) {
         html += '<div class="table-wrapper"><table><thead><tr><th>Article</th><th>Qté</th><th>N° debut</th><th>N° fin</th></tr></thead><tbody>';
         for (var i = 0; i < lignes.length; i++) {
-          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + lignes[i].quantite + '</td><td>' + (lignes[i].numero_debut || '-') + '</td><td>' + (lignes[i].numero_fin || '-') + '</td></tr>';
+          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
         }
         html += '</tbody></table></div>';
       }
 
       if (f.fichier_path) {
         if (f.fichier_path.endsWith('.pdf')) {
-          html += '<div class="mt-md"><a href="' + f.fichier_path + '" target="_blank" class="btn btn-accent btn-sm">Telecharger le PDF</a></div>';
+          html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Telecharger le PDF</a></div>';
         } else {
-          html += '<div class="mt-md"><strong>Scan signe:</strong><br><img src="' + f.fichier_path + '" style="max-width:100%;max-height:250px;border:1px solid var(--color-border);border-radius:8px;margin-top:0.5rem"></div>';
+          html += '<div class="mt-md"><strong>Scan signe:</strong><br><img src="' + UI.escapeHtml(f.fichier_path) + '" style="max-width:100%;max-height:250px;border:1px solid var(--color-border);border-radius:8px;margin-top:0.5rem"></div>';
         }
       }
 
