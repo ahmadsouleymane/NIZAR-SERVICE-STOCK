@@ -102,6 +102,9 @@ function initDB(dbPath) {
       localite_id INTEGER REFERENCES localites(id) ON DELETE SET NULL,
       fiche_id INTEGER REFERENCES fiches_reception(id) ON DELETE SET NULL,
       commande_id INTEGER REFERENCES commandes(id) ON DELETE SET NULL,
+      entree_id INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL,
+      numero_debut TEXT,
+      numero_fin TEXT,
       date TEXT DEFAULT (datetime('now')),
       created_at TEXT DEFAULT (datetime('now'))
     );
@@ -139,7 +142,61 @@ function initDB(dbPath) {
       quantite INTEGER NOT NULL DEFAULT 1,
       prix_unitaire REAL DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS fiches_entree (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference TEXT UNIQUE NOT NULL,
+      fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
+      date_entree TEXT DEFAULT (datetime('now')),
+      numero_bl TEXT,
+      numero_facture TEXT,
+      notes TEXT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      statut TEXT NOT NULL DEFAULT 'validee' CHECK(statut IN ('validee','archivee')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS fiche_entree_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fiche_id INTEGER NOT NULL REFERENCES fiches_entree(id) ON DELETE CASCADE,
+      article_id INTEGER NOT NULL REFERENCES articles(id),
+      quantite INTEGER NOT NULL DEFAULT 1,
+      numero_debut TEXT,
+      numero_fin TEXT,
+      observation TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS fiche_entree_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fiche_id INTEGER NOT NULL REFERENCES fiches_entree(id) ON DELETE CASCADE,
+      fichier_path TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'autre' CHECK(type IN ('bl','facture','autre')),
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS series_numeros (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+      numero_debut TEXT NOT NULL,
+      numero_fin TEXT NOT NULL,
+      quantite INTEGER NOT NULL DEFAULT 1,
+      source_type TEXT NOT NULL CHECK(source_type IN ('entree','sortie','retour')),
+      source_id INTEGER,
+      date TEXT DEFAULT (datetime('now'))
+    );
   `);
+
+  // Migration : ajouter les colonnes manquantes aux tables existantes (bases créées avant V2)
+  function ensureColumn(db, table, column, ddl) {
+    const cols = db.prepare('PRAGMA table_info(' + table + ')').all();
+    if (!cols.some((c) => c.name === column)) {
+      db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + ddl);
+    }
+  }
+  ensureColumn(db, 'mouvements', 'entree_id', 'INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL');
+  ensureColumn(db, 'mouvements', 'numero_debut', 'TEXT');
+  ensureColumn(db, 'mouvements', 'numero_fin', 'TEXT');
 
   // Seeds
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
