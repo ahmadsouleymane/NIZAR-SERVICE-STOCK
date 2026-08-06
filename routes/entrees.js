@@ -1,8 +1,11 @@
 // routes/entrees.js — Entrees fournisseur (enregistrement sans impression)
 const express = require('express');
+const fs = require('fs');
+const path = require('path');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { checkOverlap, recordSerie, parseNumero } = require('../services/series');
 const { createUpload } = require('../services/uploads');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 const upload = createUpload('photo');
@@ -11,20 +14,23 @@ function generateRef(db) {
   const now = new Date();
   const y = now.getFullYear().toString().slice(-2);
   const m = String(now.getMonth() + 1).padStart(2, '0');
-  const count = db.prepare("SELECT COUNT(*) as c FROM fiches_entree WHERE created_at >= date('now')").get().c;
+  const count = db.prepare("SELECT COUNT(*) as c FROM fiches_entree WHERE created_at >= date('now','localtime')").get().c;
   return 'FE-' + y + m + '-' + String(count + 1).padStart(3, '0');
 }
 
 // GET /api/entrees — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
-  const { fournisseur_id, statut, debut, fin } = req.query;
+  const { fournisseur_id, statut, debut, fin, offset } = req.query;
   let where = 'WHERE 1=1';
   const params = [];
   if (fournisseur_id) { where += ' AND fe.fournisseur_id = ?'; params.push(fournisseur_id); }
   if (statut) { where += ' AND fe.statut = ?'; params.push(statut); }
   if (debut) { where += ' AND fe.date_entree >= ?'; params.push(debut); }
   if (fin) { where += ' AND fe.date_entree <= ?'; params.push(fin + ' 23:59:59'); }
+
+  const limit = 50;
+  const off = parseInt(offset, 10) || 0;
 
   const fiches = db.prepare(`
     SELECT fe.*, f.nom as fournisseur_nom, u.username as cree_par,
@@ -34,8 +40,8 @@ router.get('/', authenticate, (req, res) => {
     LEFT JOIN fournisseurs f ON fe.fournisseur_id = f.id
     LEFT JOIN users u ON fe.user_id = u.id
     ${where}
-    ORDER BY fe.id DESC LIMIT 200
-  `).all(...params);
+    ORDER BY fe.id DESC LIMIT ? OFFSET ?
+  `).all(...params, limit, off);
   res.json({ fiches });
 });
 
@@ -87,7 +93,7 @@ router.post('/', authenticate, (req, res) => {
     const transaction = db.transaction(() => {
       const result = db.prepare(`
         INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, notes, user_id, statut)
-        VALUES (?, ?, datetime('now'), ?, ?, ?, ?, 'validee')
+        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee')
       `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, notes || null, req.user.id);
       ficheId = result.lastInsertRowid;
 
@@ -97,10 +103,10 @@ router.post('/', authenticate, (req, res) => {
       `);
       const insertMvt = db.prepare(`
         INSERT INTO mouvements (article_id, type, quantite, motif, user_id, fournisseur_id, entree_id, numero_debut, numero_fin, date)
-        VALUES (?, 'entree', ?, 'Entree fournisseur — ' || ?, ?, ?, ?, ?, ?, datetime('now'))
+        VALUES (?, 'entree', ?, 'Entree fournisseur — ' || ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
       `);
       const updateStock = db.prepare(`
-        UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now') WHERE id = ?
+        UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?
       `);
 
       for (const art of articles) {
@@ -136,6 +142,7 @@ router.post('/', authenticate, (req, res) => {
     SELECT fea.*, a.nom as article_nom, a.unite FROM fiche_entree_articles fea
     LEFT JOIN articles a ON fea.article_id = a.id WHERE fea.fiche_id = ?
   `).all(ficheId);
+  logAudit(db, req.user.id, req.user.username, 'CREER_ENTREE', reference);
   res.status(201).json({ fiche, lignes, message: 'Entree enregistree (aucune impression).' });
 });
 
@@ -157,6 +164,7 @@ router.post('/:id/photos', authenticate, upload, (req, res) => {
   `).run(req.params.id, photoPath, type);
 
   const photo = db.prepare('SELECT * FROM fiche_entree_photos WHERE id = ?').get(result.lastInsertRowid);
+  logAudit(db, req.user.id, req.user.username, 'PHOTO_ENTREE', 'Fiche ' + (fiche.reference || req.params.id) + ' — ' + type);
   res.status(201).json({ photo });
 });
 
@@ -185,13 +193,23 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
 
   const transaction = db.transaction(() => {
     for (const l of lignes) {
-      db.prepare('UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime(\'now\') WHERE id = ?').run(l.quantite, l.article_id);
+      db.prepare('UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(l.quantite, l.article_id);
     }
     db.prepare("DELETE FROM series_numeros WHERE source_type = 'entree' AND source_id = ?").run(req.params.id);
     db.prepare('DELETE FROM mouvements WHERE entree_id = ?').run(req.params.id);
     db.prepare('DELETE FROM fiches_entree WHERE id = ?').run(req.params.id);
   });
   transaction();
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_ENTREE', fiche.reference || String(req.params.id));
+
+  // Nettoyer les photos (bon de livraison / facture) sur disque pour eviter les orphelins
+  const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
+  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  for (const p of photos) {
+    const full = path.resolve(uploadsDir, String(p.fichier_path).replace(/^\/uploads\//, ''));
+    if (fs.existsSync(full)) { try { fs.unlinkSync(full); } catch (e) { /* deja supprime */ } }
+  }
+
   res.json({ message: 'Entree supprimee (stock ajuste).' });
 });
 

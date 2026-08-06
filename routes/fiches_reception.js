@@ -6,6 +6,7 @@ const { authenticate, requireAdmin } = require('../middleware/auth');
 const { generateFichePDF } = require('../services/pdf');
 const { checkOverlap, recordSerie, parseNumero } = require('../services/series');
 const { createUpload } = require('../services/uploads');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 const upload = createUpload('scan');
@@ -14,14 +15,14 @@ function generateRef(db) {
   const now = new Date();
   const y = now.getFullYear().toString().slice(-2);
   const m = String(now.getMonth() + 1).padStart(2, '0');
-  const count = db.prepare("SELECT COUNT(*) as c FROM fiches_reception WHERE created_at >= date('now')").get().c;
+  const count = db.prepare("SELECT COUNT(*) as c FROM fiches_reception WHERE created_at >= date('now','localtime')").get().c;
   return 'FR-' + y + m + '-' + String(count + 1).padStart(3, '0');
 }
 
 // GET /api/fiches — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
-  const { statut, localite_id, debut, fin } = req.query;
+  const { statut, localite_id, debut, fin, offset } = req.query;
 
   let query = `
     SELECT fr.*, l.nom as localite_nom, l.est_service as localite_service, u.username as cree_par,
@@ -38,8 +39,10 @@ router.get('/', authenticate, (req, res) => {
   if (debut) { query += ' AND fr.date_creation >= ?'; params.push(debut); }
   if (fin) { query += ' AND fr.date_creation <= ?'; params.push(fin + ' 23:59:59'); }
 
-  query += ' ORDER BY fr.id DESC LIMIT 200';
-  const fiches = db.prepare(query).all(...params);
+  const limit = 50;
+  const off = parseInt(offset, 10) || 0;
+  query += ' ORDER BY fr.id DESC LIMIT ? OFFSET ?';
+  const fiches = db.prepare(query).all(...params, limit, off);
   res.json({ fiches });
 });
 
@@ -95,7 +98,7 @@ router.post('/', authenticate, async (req, res) => {
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, destinataire, date_envoi)
-      VALUES (?, ?, ?, 'envoyee', ?, ?, datetime('now'))
+      VALUES (?, ?, ?, 'envoyee', ?, ?, datetime('now','localtime'))
     `).run(reference, localite_id, req.user.id, notes || null, destinataire || null);
 
     ficheId = result.lastInsertRowid;
@@ -106,10 +109,10 @@ router.post('/', authenticate, async (req, res) => {
     `);
     const insertMvt = db.prepare(`
       INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, demandeur, date)
-      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, ?, datetime('now','localtime'))
     `);
     const updateStock = db.prepare(`
-      UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now') WHERE id = ?
+      UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now','localtime') WHERE id = ?
     `);
 
     for (const art of articles) {
@@ -151,13 +154,14 @@ router.post('/', authenticate, async (req, res) => {
     // Generer le PDF
     try {
       const pdfPath = await generateFichePDF(fiche, lignes);
-      db.prepare('UPDATE fiches_reception SET fichier_path = ?, updated_at = datetime(\'now\') WHERE id = ?').run(pdfPath, ficheId);
+      db.prepare('UPDATE fiches_reception SET fichier_path = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(pdfPath, ficheId);
       fiche.fichier_path = pdfPath;
     } catch (pdfErr) {
       console.error('Erreur generation PDF:', pdfErr.message);
       // On continue meme si le PDF echoue
     }
 
+    logAudit(db, req.user.id, req.user.username, 'CREER_FICHE', 'Sortie ' + reference + ' — ' + (localite.nom || ''));
     res.status(201).json({ fiche, lignes });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -209,7 +213,8 @@ router.patch('/:id/statut', authenticate, (req, res) => {
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
-  db.prepare('UPDATE fiches_reception SET statut = ?, updated_at = datetime(\'now\') WHERE id = ?').run(statut, req.params.id);
+  db.prepare('UPDATE fiches_reception SET statut = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(statut, req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'STATUT_FICHE', 'Fiche ' + (fiche.reference || req.params.id) + ' -> ' + statut);
 
   const updated = db.prepare(`
     SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
@@ -225,14 +230,17 @@ router.post('/:id/upload', authenticate, upload, (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Fichier scan requis.' });
 
   const scanPath = '/uploads/' + req.file.filename;
-  db.prepare('UPDATE fiches_reception SET fichier_path = ?, statut = \'archivee\', updated_at = datetime(\'now\') WHERE id = ?')
+  // Le PDF original (fichier_path) reste intact et re-imprimable a volonte ;
+  // le scan signe est archive separement dans scan_path.
+  db.prepare('UPDATE fiches_reception SET scan_path = ?, statut = \'archivee\', updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
     .run(scanPath, req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SCAN_FICHE', 'Scan signe archive pour ' + (fiche.reference || req.params.id));
 
   const updated = db.prepare(`
     SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
 
-  res.json({ fiche: updated, message: 'Scan uploade et fiche archivee.' });
+  res.json({ fiche: updated, message: 'Scan uploade et fiche archivee. Le PDF original reste telechargeable.' });
 });
 
 // DELETE /api/fiches/:id (admin seulement)
@@ -253,6 +261,17 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   });
 
   transaction();
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_FICHE', fiche.reference || String(req.params.id));
+
+  // Nettoyer les fichiers sur disque (PDF original + scan signe) pour eviter les orphelins
+  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  const filesToRemove = [fiche.fichier_path, fiche.scan_path];
+  for (const f of filesToRemove) {
+    if (!f) continue;
+    const full = path.resolve(uploadsDir, String(f).replace(/^\/uploads\//, ''));
+    if (fs.existsSync(full)) { try { fs.unlinkSync(full); } catch (e) { /* fichier deja supprime */ } }
+  }
+
   res.json({ message: 'Fiche supprimee.' });
 });
 

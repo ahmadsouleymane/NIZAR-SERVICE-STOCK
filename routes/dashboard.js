@@ -9,14 +9,14 @@ router.get('/', authenticate, (req, res) => {
   const totalArticles = db.prepare('SELECT COUNT(*) as count FROM articles').get().count;
   const alertesStock = db.prepare('SELECT COUNT(*) as count FROM articles WHERE stock_actuel <= stock_min').get().count;
   const mouvementsJour = db.prepare(
-    "SELECT COUNT(*) as count FROM mouvements WHERE date >= date('now')"
+    "SELECT COUNT(*) as count FROM mouvements WHERE date >= date('now','localtime')"
   ).get().count;
   const commandesEnCours = db.prepare(
     "SELECT COUNT(*) as count FROM commandes WHERE statut IN ('brouillon', 'envoyee')"
   ).get().count;
 
   const entreesJour = db.prepare(
-    "SELECT COUNT(*) as count FROM fiches_entree WHERE date_entree >= date('now')"
+    "SELECT COUNT(*) as count FROM fiches_entree WHERE date_entree >= date('now','localtime')"
   ).get().count;
 
   const entreesRecentes = db.prepare(`

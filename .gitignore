@@ -3,6 +3,7 @@ database/*.db
 database/*.db-journal
 database/*.db-shm
 database/*.db-wal
+database/backups/
 .env
 .DS_Store
 xlsx
@@ -10,3 +11,4 @@ xlsx
 *.xlsx
 *.db-shm
 *.db-wal
+public/uploads/

@@ -1,6 +1,7 @@
 // server.js
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const initDB = require('./database/init');
 
@@ -8,6 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
+app.use(compression()); // gzip sur toutes les reponses (JS, CSS, JSON, PDF, Excel)
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -35,6 +37,9 @@ app.use('/api/fiches', require('./routes/fiches_reception'));
 app.use('/api/retours', require('./routes/retours'));
 app.use('/api/entrees', require('./routes/entrees'));
 app.use('/api/series', require('./routes/series'));
+app.use('/api/inventaires', require('./routes/inventaires'));
+app.use('/api/backup', require('./routes/backup'));
+app.use('/api/audit', require('./routes/audit'));
 app.use('/api/import', require('./routes/import'));
 
 // Servir les uploads

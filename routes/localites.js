@@ -1,6 +1,7 @@
 // routes/localites.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 router.get('/', authenticate, (req, res) => {
@@ -25,6 +26,7 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   const result = db.prepare('INSERT INTO localites (nom, type, pays, est_service) VALUES (?, ?, ?, ?)')
     .run(nom, typeVal, pays || 'Niger', est_service ? 1 : 0);
   const localite = db.prepare('SELECT * FROM localites WHERE id = ?').get(result.lastInsertRowid);
+  logAudit(db, req.user.id, req.user.username, 'CREER_LOCALITE', nom + ' (' + typeVal + ')');
   res.status(201).json({ localite });
 });
 
@@ -33,6 +35,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const l = db.prepare('SELECT * FROM localites WHERE id = ?').get(req.params.id);
   if (!l) return res.status(404).json({ error: 'Localite introuvable.' });
   db.prepare('DELETE FROM localites WHERE id = ?').run(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_LOCALITE', l.nom || String(req.params.id));
   res.json({ message: 'Localite supprimee.' });
 });
 

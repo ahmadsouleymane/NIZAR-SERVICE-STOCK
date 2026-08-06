@@ -16,14 +16,14 @@ function initDB(dbPath) {
       username TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('admin', 'assistant')),
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT UNIQUE NOT NULL,
       description TEXT,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     -- Destinations / gares / agences
@@ -33,7 +33,7 @@ function initDB(dbPath) {
       type TEXT NOT NULL DEFAULT 'national' CHECK(type IN ('national', 'international')),
       pays TEXT DEFAULT 'Niger',
       est_service INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS fournisseurs (
@@ -45,8 +45,8 @@ function initDB(dbPath) {
       adresse TEXT,
       type TEXT NOT NULL DEFAULT 'externe' CHECK(type IN ('externe', 'interne')),
       delai_moyen_j INTEGER DEFAULT 7,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS articles (
@@ -61,15 +61,15 @@ function initDB(dbPath) {
       stock_actuel INTEGER DEFAULT 0,
       prix_unitaire REAL DEFAULT 0,
       fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     -- Fiches de reception
     CREATE TABLE IF NOT EXISTS fiches_reception (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reference TEXT UNIQUE NOT NULL,
-      date_creation TEXT DEFAULT (datetime('now')),
+      date_creation TEXT DEFAULT (datetime('now','localtime')),
       date_envoi TEXT,
       localite_id INTEGER NOT NULL REFERENCES localites(id),
       user_id INTEGER REFERENCES users(id),
@@ -77,8 +77,8 @@ function initDB(dbPath) {
       notes TEXT,
       destinataire TEXT,
       fichier_path TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     -- Lignes d'une fiche de reception
@@ -107,8 +107,8 @@ function initDB(dbPath) {
       entree_id INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL,
       numero_debut TEXT,
       numero_fin TEXT,
-      date TEXT DEFAULT (datetime('now')),
-      created_at TEXT DEFAULT (datetime('now'))
+      date TEXT DEFAULT (datetime('now','localtime')),
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     -- Retours de carnets (usages ou non utilises)
@@ -122,19 +122,19 @@ function initDB(dbPath) {
       numero_fin TEXT,
       motif TEXT,
       user_id INTEGER REFERENCES users(id),
-      date_retour TEXT DEFAULT (datetime('now')),
-      created_at TEXT DEFAULT (datetime('now'))
+      date_retour TEXT DEFAULT (datetime('now','localtime')),
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS commandes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
       statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'recue', 'annulee')),
-      date_commande TEXT DEFAULT (datetime('now')),
+      date_commande TEXT DEFAULT (datetime('now','localtime')),
       date_reception TEXT,
       notes TEXT,
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS commande_articles (
@@ -149,14 +149,14 @@ function initDB(dbPath) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reference TEXT UNIQUE NOT NULL,
       fournisseur_id INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL,
-      date_entree TEXT DEFAULT (datetime('now')),
+      date_entree TEXT DEFAULT (datetime('now','localtime')),
       numero_bl TEXT,
       numero_facture TEXT,
       notes TEXT,
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       statut TEXT NOT NULL DEFAULT 'validee' CHECK(statut IN ('validee','archivee')),
-      created_at TEXT DEFAULT (datetime('now')),
-      updated_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS fiche_entree_articles (
@@ -174,7 +174,7 @@ function initDB(dbPath) {
       fiche_id INTEGER NOT NULL REFERENCES fiches_entree(id) ON DELETE CASCADE,
       fichier_path TEXT NOT NULL,
       type TEXT NOT NULL DEFAULT 'autre' CHECK(type IN ('bl','facture','autre')),
-      created_at TEXT DEFAULT (datetime('now'))
+      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
     CREATE TABLE IF NOT EXISTS series_numeros (
@@ -185,7 +185,30 @@ function initDB(dbPath) {
       quantite INTEGER NOT NULL DEFAULT 1,
       source_type TEXT NOT NULL CHECK(source_type IN ('entree','sortie','retour')),
       source_id INTEGER,
-      date TEXT DEFAULT (datetime('now'))
+      date TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- Inventaires physiques : comptage + ajustement du stock theorique
+    CREATE TABLE IF NOT EXISTS inventaires (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+      stock_theorique INTEGER NOT NULL DEFAULT 0,
+      quantite_comptee INTEGER NOT NULL DEFAULT 0,
+      ecart INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      date_inventaire TEXT DEFAULT (datetime('now','localtime')),
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    -- Journal d'audit : tracabilite des operations sensibles
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      username TEXT,
+      action TEXT NOT NULL,
+      details TEXT,
+      date TEXT DEFAULT (datetime('now','localtime'))
     );
   `);
 
@@ -201,6 +224,7 @@ function initDB(dbPath) {
   ensureColumn(db, 'mouvements', 'numero_fin', 'TEXT');
   ensureColumn(db, 'localites', 'est_service', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'fiches_reception', 'destinataire', 'TEXT');
+  ensureColumn(db, 'fiches_reception', 'scan_path', 'TEXT');
 
   // Seeds
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');

@@ -1,6 +1,7 @@
 // routes/fournisseurs.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 // GET /api/fournisseurs
@@ -28,6 +29,7 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   `).run(nom, contact || null, telephone || null, email || null, adresse || null, delai_moyen_j || 7);
 
   const fournisseur = db.prepare('SELECT * FROM fournisseurs WHERE id = ?').get(result.lastInsertRowid);
+  logAudit(db, req.user.id, req.user.username, 'CREER_FOURNISSEUR', nom);
   res.status(201).json({ fournisseur });
 });
 
@@ -58,7 +60,7 @@ router.put('/:id', authenticate, (req, res) => {
 
   db.prepare(`
     UPDATE fournisseurs
-    SET nom = ?, contact = ?, telephone = ?, email = ?, adresse = ?, delai_moyen_j = ?, updated_at = datetime('now')
+    SET nom = ?, contact = ?, telephone = ?, email = ?, adresse = ?, delai_moyen_j = ?, updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
     nom || f.nom, contact !== undefined ? contact : f.contact,
@@ -68,6 +70,7 @@ router.put('/:id', authenticate, (req, res) => {
   );
 
   const fournisseur = db.prepare('SELECT * FROM fournisseurs WHERE id = ?').get(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'MODIF_FOURNISSEUR', fournisseur.nom || String(req.params.id));
   res.json({ fournisseur });
 });
 
@@ -77,6 +80,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const f = db.prepare('SELECT * FROM fournisseurs WHERE id = ?').get(req.params.id);
   if (!f) return res.status(404).json({ error: 'Fournisseur introuvable.' });
   db.prepare('DELETE FROM fournisseurs WHERE id = ?').run(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_FOURNISSEUR', f.nom || String(req.params.id));
   res.json({ message: 'Fournisseur supprime.' });
 });
 

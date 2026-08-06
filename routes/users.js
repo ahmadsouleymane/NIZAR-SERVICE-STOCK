@@ -2,6 +2,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 // GET /api/users (admin only)
@@ -30,6 +31,7 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   const result = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run(username, hash, role);
 
   const user = db.prepare('SELECT id, username, role, created_at FROM users WHERE id = ?').get(result.lastInsertRowid);
+  logAudit(db, req.user.id, req.user.username, 'CREER_UTILISATEUR', username + ' (' + role + ')');
   res.status(201).json({ user });
 });
 
@@ -58,6 +60,7 @@ router.put('/:id', authenticate, requireAdmin, (req, res) => {
   );
 
   const updated = db.prepare('SELECT id, username, role, created_at FROM users WHERE id = ?').get(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'MODIF_UTILISATEUR', updated.username || String(req.params.id));
   res.json({ user: updated });
 });
 
@@ -71,6 +74,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
   if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
   db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_UTILISATEUR', user.username || String(req.params.id));
   res.json({ message: 'Utilisateur supprime.' });
 });
 

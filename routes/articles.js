@@ -1,6 +1,7 @@
 // routes/articles.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 // GET /api/articles
@@ -61,10 +62,11 @@ router.post('/', authenticate, (req, res) => {
     WHERE a.id = ?
   `).get(result.lastInsertRowid);
 
+  logAudit(db, req.user.id, req.user.username, 'CREER_ARTICLE', reference + ' — ' + nom);
   res.status(201).json({ article });
 });
 
-// GET /api/articles/:id
+// GET /api/articles/:id — detail + historique des mouvements + series de numeros
 router.get('/:id', authenticate, (req, res) => {
   const db = req.db;
   const article = db.prepare(`
@@ -75,7 +77,29 @@ router.get('/:id', authenticate, (req, res) => {
     WHERE a.id = ?
   `).get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
-  res.json({ article });
+
+  const mouvements = db.prepare(`
+    SELECT m.*, u.username, f.nom as fournisseur_nom, l.nom as localite_nom
+    FROM mouvements m
+    LEFT JOIN users u ON m.user_id = u.id
+    LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    WHERE m.article_id = ?
+    ORDER BY m.id DESC LIMIT 50
+  `).all(req.params.id);
+
+  const series = db.prepare(`
+    SELECT s.*, fr.reference as fiche_reference, l.nom as localite_nom,
+           rc.type_retour
+    FROM series_numeros s
+    LEFT JOIN fiches_reception fr ON s.source_type = 'sortie' AND fr.id = s.source_id
+    LEFT JOIN localites l ON fr.localite_id = l.id
+    LEFT JOIN retours_carnets rc ON s.source_type = 'retour' AND rc.id = s.source_id
+    WHERE s.article_id = ?
+    ORDER BY s.id DESC LIMIT 30
+  `).all(req.params.id);
+
+  res.json({ article, mouvements, series });
 });
 
 // PUT /api/articles/:id
@@ -94,7 +118,7 @@ router.put('/:id', authenticate, (req, res) => {
   db.prepare(`
     UPDATE articles
     SET reference = ?, nom = ?, categorie_id = ?, description = ?, unite = ?,
-        stock_min = ?, prix_unitaire = ?, fournisseur_id = ?, updated_at = datetime('now')
+        stock_min = ?, prix_unitaire = ?, fournisseur_id = ?, updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
     reference || article.reference,
@@ -117,6 +141,7 @@ router.put('/:id', authenticate, (req, res) => {
   `).get(req.params.id);
 
   res.json({ article: updated });
+  logAudit(db, req.user.id, req.user.username, 'MODIF_ARTICLE', updated.reference + ' — ' + updated.nom);
 });
 
 // DELETE /api/articles/:id (admin only)
@@ -125,6 +150,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
   db.prepare('DELETE FROM articles WHERE id = ?').run(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_ARTICLE', article.reference + ' — ' + article.nom);
   res.json({ message: 'Article supprime.' });
 });
 

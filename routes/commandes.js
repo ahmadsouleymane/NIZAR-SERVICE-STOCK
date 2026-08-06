@@ -1,6 +1,7 @@
 // routes/commandes.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 // GET /api/commandes
@@ -55,7 +56,7 @@ router.post('/', authenticate, (req, res) => {
 
   const insertCommande = db.prepare(`
     INSERT INTO commandes (fournisseur_id, statut, notes, date_commande)
-    VALUES (?, 'brouillon', ?, datetime('now'))
+    VALUES (?, 'brouillon', ?, datetime('now','localtime'))
   `);
   const insertLigne = db.prepare(`
     INSERT INTO commande_articles (commande_id, article_id, quantite, prix_unitaire)
@@ -112,11 +113,11 @@ router.put('/:id', authenticate, (req, res) => {
 
   const transaction = db.transaction(() => {
     if (fournisseur_id) {
-      db.prepare('UPDATE commandes SET fournisseur_id = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      db.prepare('UPDATE commandes SET fournisseur_id = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
         .run(fournisseur_id, req.params.id);
     }
     if (notes !== undefined) {
-      db.prepare('UPDATE commandes SET notes = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      db.prepare('UPDATE commandes SET notes = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
         .run(notes, req.params.id);
     }
     if (lignes) {
@@ -161,28 +162,29 @@ router.patch('/:id/statut', authenticate, (req, res) => {
 
   const transaction = db.transaction(() => {
     if (statut === 'recue') {
-      db.prepare('UPDATE commandes SET statut = ?, date_reception = datetime(\'now\'), updated_at = datetime(\'now\') WHERE id = ?')
+      db.prepare('UPDATE commandes SET statut = ?, date_reception = datetime(\'now\',\'localtime\'), updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
         .run(statut, req.params.id);
 
       // Generer les mouvements d'entree pour chaque ligne
       const lignes = db.prepare('SELECT * FROM commande_articles WHERE commande_id = ?').all(req.params.id);
       const insertMouvement = db.prepare(`
         INSERT INTO mouvements (article_id, type, quantite, motif, user_id, fournisseur_id, commande_id, date)
-        VALUES (?, 'entree', ?, 'Reception commande', ?, ?, ?, datetime('now'))
+        VALUES (?, 'entree', ?, 'Reception commande', ?, ?, ?, datetime('now','localtime'))
       `);
-      const updateStock = db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\') WHERE id = ?');
+      const updateStock = db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?');
 
       for (const ligne of lignes) {
         insertMouvement.run(ligne.article_id, ligne.quantite, req.user.id, commande.fournisseur_id, req.params.id);
         updateStock.run(ligne.quantite, ligne.article_id);
       }
     } else {
-      db.prepare('UPDATE commandes SET statut = ?, updated_at = datetime(\'now\') WHERE id = ?')
+      db.prepare('UPDATE commandes SET statut = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
         .run(statut, req.params.id);
     }
   });
 
   transaction();
+  logAudit(db, req.user.id, req.user.username, 'STATUT_COMMANDE', '#' + req.params.id + ' -> ' + statut);
 
   const updated = db.prepare('SELECT c.*, f.nom as fournisseur_nom FROM commandes c LEFT JOIN fournisseurs f ON c.fournisseur_id = f.id WHERE c.id = ?').get(req.params.id);
   res.json({ commande: updated });
@@ -197,6 +199,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
     return res.status(400).json({ error: 'Impossible de supprimer une commande deja recue.' });
   }
   db.prepare('DELETE FROM commandes WHERE id = ?').run(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_COMMANDE', '#' + req.params.id);
   res.json({ message: 'Commande supprimee.' });
 });
 

@@ -6,7 +6,7 @@ const router = express.Router();
 // GET /api/mouvements
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
-  const { debut, fin, type, article_id } = req.query;
+  const { debut, fin, type, article_id, offset } = req.query;
 
   let whereClause = 'WHERE 1=1';
   const params = [];
@@ -15,6 +15,9 @@ router.get('/', authenticate, (req, res) => {
   if (fin) { whereClause += ' AND m.date <= ?'; params.push(fin + ' 23:59:59'); }
   if (type) { whereClause += ' AND m.type = ?'; params.push(type); }
   if (article_id) { whereClause += ' AND m.article_id = ?'; params.push(article_id); }
+
+  const limit = 50;
+  const off = parseInt(offset, 10) || 0;
 
   const mouvements = db.prepare(`
     SELECT m.*, a.nom as article_nom, a.reference as article_reference,
@@ -25,8 +28,8 @@ router.get('/', authenticate, (req, res) => {
     LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
     ${whereClause}
     ORDER BY m.id DESC
-    LIMIT 500
-  `).all(...params);
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, off);
 
   // Totals
   let totalsWhere = 'WHERE 1=1';
@@ -84,11 +87,11 @@ router.post('/', authenticate, (req, res) => {
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO mouvements (article_id, type, quantite, motif, demandeur, user_id, fournisseur_id, date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
     `).run(article_id, type, qte, motif || null, demandeur || null, req.user.id, fournisseur_id || null);
 
     const delta = type === 'entree' ? qte : -qte;
-    db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\') WHERE id = ?')
+    db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
       .run(delta, article_id);
 
     mouvement = db.prepare(`
