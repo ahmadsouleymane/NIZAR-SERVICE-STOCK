@@ -34,6 +34,7 @@ app.use('/api/localites', require('./routes/localites'));
 app.use('/api/fiches', require('./routes/fiches_reception'));
 app.use('/api/retours', require('./routes/retours'));
 app.use('/api/entrees', require('./routes/entrees'));
+app.use('/api/series', require('./routes/series'));
 app.use('/api/import', require('./routes/import'));
 
 // Servir les uploads

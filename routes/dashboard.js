@@ -15,6 +15,17 @@ router.get('/', authenticate, (req, res) => {
     "SELECT COUNT(*) as count FROM commandes WHERE statut IN ('brouillon', 'envoyee')"
   ).get().count;
 
+  const entreesJour = db.prepare(
+    "SELECT COUNT(*) as count FROM fiches_entree WHERE date_entree >= date('now')"
+  ).get().count;
+
+  const entreesRecentes = db.prepare(`
+    SELECT fe.id, fe.reference, fe.date_entree, fe.numero_bl, fe.numero_facture, f.nom as fournisseur_nom
+    FROM fiches_entree fe
+    LEFT JOIN fournisseurs f ON fe.fournisseur_id = f.id
+    ORDER BY fe.id DESC LIMIT 5
+  `).all();
+
   const mouvementsRecents = db.prepare(`
     SELECT m.id, m.type, m.quantite, m.motif, m.date, a.nom as article_nom, u.username
     FROM mouvements m
@@ -35,7 +46,8 @@ router.get('/', authenticate, (req, res) => {
   `).all();
 
   res.json({
-    kpi: { totalArticles, alertesStock, mouvementsJour, commandesEnCours },
+    kpi: { totalArticles, alertesStock, mouvementsJour, commandesEnCours, entreesJour },
+    entreesRecentes,
     mouvementsRecents,
     topAlertes
   });

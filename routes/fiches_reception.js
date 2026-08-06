@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { authenticate, requireAdmin } = require('../middleware/auth');
 const { generateFichePDF } = require('../services/pdf');
+const { checkOverlap, recordSerie } = require('../services/series');
 const router = express.Router();
 
 const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
@@ -127,6 +128,12 @@ router.post('/', authenticate, async (req, res) => {
         throw new Error('Stock insuffisant pour ' + article.nom + ' (disponible: ' + article.stock_actuel + ' ' + article.unite + ')');
       }
 
+      if (article.type_article === 'numerote') {
+        const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'sortie');
+        if (overlap) throw new Error('Chevauchement : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja envoyee (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
+        recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'sortie', ficheId);
+      }
+
       insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
       insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId);
       updateStock.run(art.quantite, art.article_id);
@@ -201,8 +208,8 @@ router.get('/:id/pdf', authenticate, (req, res) => {
 router.patch('/:id/statut', authenticate, (req, res) => {
   const db = req.db;
   const { statut } = req.body;
-  if (!['envoyee', 'archivee'].includes(statut)) {
-    return res.status(400).json({ error: 'Statut invalide (envoyee ou archivee).' });
+  if (!['envoyee', 'signee', 'archivee'].includes(statut)) {
+    return res.status(400).json({ error: 'Statut invalide (envoyee, signee ou archivee).' });
   }
 
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
