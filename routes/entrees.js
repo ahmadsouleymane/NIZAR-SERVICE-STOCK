@@ -132,6 +132,10 @@ router.post('/', authenticate, (req, res) => {
 
     transaction();
   } catch (err) {
+    // Erreur technique (SQLite/disque) : laisser le handler global de server.js la mapper
+    // (FK→400, UNIQUE→409, CHECK→400, sinon 500). 400 reserve aux erreurs metier
+    // (new Error sans code : quantite, article introuvable, chevauchement...).
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
     return res.status(400).json({ error: err.message });
   }
 
@@ -172,11 +176,17 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
 
   const lignes = db.prepare('SELECT * FROM fiche_entree_articles WHERE fiche_id = ?').all(req.params.id);
 
+  // Agreger les quantites par article AVANT la garde : evite les stocks negatifs
+  // quand une fiche a plusieurs lignes du meme article (ex. stock 3, deux lignes de 2).
+  const totals = {};
   for (const l of lignes) {
-    const article = db.prepare('SELECT stock_actuel FROM articles WHERE id = ?').get(l.article_id);
-    if (article && article.stock_actuel < l.quantite) {
+    totals[l.article_id] = (totals[l.article_id] || 0) + l.quantite;
+  }
+  for (const article_id of Object.keys(totals)) {
+    const article = db.prepare('SELECT stock_actuel FROM articles WHERE id = ?').get(article_id);
+    if (article && article.stock_actuel < totals[article_id]) {
       return res.status(400).json({
-        error: 'Suppression impossible : stock article #' + l.article_id + ' (' + article.stock_actuel + ') inferieur a la quantite de l entree (' + l.quantite + '). Des sorties ont eu lieu.'
+        error: 'Suppression impossible : stock article #' + article_id + ' (' + article.stock_actuel + ') inferieur a la quantite de l entree (' + totals[article_id] + '). Des sorties ont eu lieu.'
       });
     }
   }

@@ -61,7 +61,9 @@ app.use((err, req, res, next) => {
   }
 
   // Erreurs SQLite (contrainte FK, CHECK, UNIQUE)
-  if (err.message && err.message.includes('SQLITE_')) {
+  // better-sqlite3 expose `err.code` (ex. SQLITE_CONSTRAINT_UNIQUE) ; son message
+  // ne contient pas forcement 'SQLITE_', on teste donc aussi le code.
+  if ((err.code && err.code.startsWith('SQLITE_')) || (err.message && err.message.includes('SQLITE_'))) {
     if (err.message.includes('FOREIGN KEY')) {
       return res.status(400).json({ error: 'Reference invalide : element lie introuvable.' });
     }
