@@ -68,7 +68,7 @@ var Fiches = {
         '<td><strong>' + UI.escapeHtml(f.localite_nom) + '</strong></td>' +
         '<td><span class="badge ' + statutCls + '">' + statutLabel + '</span></td>' +
         '<td>' + (f.nb_lignes || 0) + '</td>' +
-        '<td>' + (f.fichier_path ? '<a href="' + f.fichier_path + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
+        '<td>' + (f.fichier_path ? '<a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
         '<td>' + (f.fichier_path && (f.statut === 'archivee' || f.statut === 'signee') ? '<span class="badge badge-success">Scanne</span>' : '<span class="badge badge-warning">En attente</span>') + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-fiche" data-id="' + f.id + '">Details</button>' +
