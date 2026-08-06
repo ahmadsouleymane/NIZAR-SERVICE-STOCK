@@ -92,6 +92,17 @@ const f1 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil1'], { header: 1 });
 const f2 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil2'], { header: 1 });
 const f3 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil3'], { header: 1 });
 
+// Dernière date réelle du fichier — utilisée comme repli pour les lignes sans date
+// (plutot que la date du jour, pour ne pas creer de faux mouvements « d'aujourd'hui »)
+let lastSerial = 0;
+for (const rows of [f1, f2, f3]) {
+  for (let i = 1; i < rows.length; i++) {
+    const r = rows[i];
+    if (r && typeof r[0] === 'number' && r[0] > lastSerial) lastSerial = r[0];
+  }
+}
+const lastDate = excelDate(lastSerial) || new Date().toISOString().split('T')[0];
+
 // --- Articles (libellés uniques normalisés) ---
 const articleNames = new Map(); // normName -> {quantite:sum, numerote:bool}
 for (const rows of [f1]) {
@@ -192,7 +203,7 @@ db.transaction(() => {
     const articleId = articleIds.get(n);
     if (!articleId) continue;
     const locId = getLoc(r[2]);
-    const date = excelDate(r[0]) || new Date().toISOString().split('T')[0];
+    const date = excelDate(r[0]) || lastDate;
     const range = articleNames.get(n).numerote ? parseRange(r[4]) : null;
     const mvt = insertMvt.run(
       articleId, parseFloat(r[3]) || 1, locId,
@@ -214,7 +225,7 @@ db.transaction(() => {
       const articleId = articleIds.get(n);
       if (!articleId) continue;
       const locId = getLoc(r[2]);
-      const date = excelDate(r[0]) || new Date().toISOString().split('T')[0];
+      const date = excelDate(r[0]) || lastDate;
       const debut = parseInt(r[3], 10);
       if (isNaN(debut)) continue;
       const fin = debut + 49;
