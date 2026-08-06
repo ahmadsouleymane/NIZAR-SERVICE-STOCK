@@ -133,6 +133,9 @@
   }
 
   function navigate(page) {
+    // Fermer toute modale ouverte : elle ne doit pas survivre au changement de page
+    var overlay = document.getElementById('modal-overlay');
+    if (overlay) overlay.style.display = 'none';
     if (currentPage === page) { closeDrawer(); return; }
     currentPage = page;
     window.location.hash = page;

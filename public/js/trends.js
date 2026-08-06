@@ -52,7 +52,7 @@ var TrendsWidget = {
     var barW = Math.max(3, Math.min(13, groupW * 0.30 - gap));
 
     var s = '';
-    s += '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" height="auto" style="display:block;max-width:100%" role="img" aria-label="Graphique des entrees et sorties sur 14 jours">';
+    s += '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" style="display:block;max-width:100%;height:auto" role="img" aria-label="Graphique des entrees et sorties sur 14 jours">';
 
     // Grille horizontale + labels de valeurs
     var gridLines = 4;

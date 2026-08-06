@@ -1,5 +1,8 @@
-// public/sw.js - Service Worker Nizar Stock
-var CACHE_NAME = 'nizar-stock-v2';
+// public/sw.js — Service Worker Nizar Stock
+// Strategie NETWORK-FIRST : on sert toujours la derniere version des fichiers
+// (l'app change souvent), le cache ne sert qu'en secours hors-ligne.
+// Version de cache incrementee a chaque deploiement pour purger l'ancien.
+var CACHE_NAME = 'nizar-stock-v3';
 var STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -19,20 +22,24 @@ var STATIC_ASSETS = [
   '/js/inventaire.js',
   '/js/rapports.js',
   '/js/parametres.js',
+  '/js/trends.js',
+  '/js/alertes.js',
+  '/js/globalsearch.js',
+  '/js/billets.js',
   '/manifest.json'
 ];
 
-// Install: cache static assets
+// Install : pre-cacher les assets de base
 self.addEventListener('install', function(event) {
   event.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
       return cache.addAll(STATIC_ASSETS);
-    })
+    }).catch(function() { /* certains fichiers peuvent manquer a l'install */ })
   );
   self.skipWaiting();
 });
 
-// Activate: clean old caches
+// Activate : purger les anciens caches
 self.addEventListener('activate', function(event) {
   event.waitUntil(
     caches.keys().then(function(keys) {
@@ -45,34 +52,45 @@ self.addEventListener('activate', function(event) {
   self.clients.claim();
 });
 
-// Fetch: cache-first for static, network-first for API
+// Fetch : network-first pour le meme-origine (toujours frais), cache en secours.
 self.addEventListener('fetch', function(event) {
-  var url = new URL(event.request.url);
+  var request = event.request;
+  var url = new URL(request.url);
 
-  // API calls: network-first
-  if (url.pathname.startsWith('/api/')) {
+  // Laisse les autres origines (Google Fonts, etc.) au navigateur
+  if (url.origin !== location.origin) return;
+
+  // Les API restent network-first sans cache (donnees toujours fraiches)
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/uploads/')) {
     event.respondWith(
-      fetch(event.request)
-        .catch(function() {
-          return new Response(JSON.stringify({ error: 'Mode hors-ligne. Action impossible.' }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        })
+      fetch(request).catch(function() {
+        return new Response(JSON.stringify({ error: 'Hors-ligne.' }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      })
     );
     return;
   }
 
-  // Static: cache-first
-  event.respondWith(
-    caches.match(event.request).then(function(cached) {
-      return cached || fetch(event.request).then(function(response) {
+  // GET statiques : network-first, on met a jour le cache en parallele
+  if (request.method === 'GET') {
+    event.respondWith(
+      fetch(request).then(function(response) {
         if (response && response.status === 200) {
           var clone = response.clone();
-          caches.open(CACHE_NAME).then(function(cache) { cache.put(event.request, clone); });
+          caches.open(CACHE_NAME).then(function(cache) { cache.put(request, clone); });
         }
         return response;
-      });
-    })
-  );
+      }).catch(function() {
+        return caches.match(request).then(function(cached) {
+          return cached || new Response('', { status: 504, headers: { 'Content-Type': 'text/plain' } });
+        });
+      })
+    );
+    return;
+  }
+
+  // Autres methodes : reseau
+  event.respondWith(fetch(request));
 });
