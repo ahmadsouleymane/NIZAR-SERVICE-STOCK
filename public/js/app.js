@@ -22,8 +22,27 @@
     { id: 'parametres', label: 'Paramètres', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>' }
   ];
 
-  // 5 items principaux pour la bottom nav
-  var BOTTOM_ITEMS = ['dashboard', 'articles', 'fiches', 'entrees', 'mouvements'];
+  // 4 items principaux pour la bottom nav (autour du bouton d'action central)
+  var BOTTOM_ITEMS = ['dashboard', 'articles', 'fiches', 'entrees'];
+  var BOTTOM_LABELS = { dashboard: 'Accueil', articles: 'Articles', fiches: 'Sorties', entrees: 'Entrées' };
+
+  // Actions rapides accessibles via le bouton central (+)
+  var QUICK_ACTIONS = [
+    { label: 'Nouvelle entrée', page: 'entrees', open: true },
+    { label: 'Nouvelle sortie', page: 'fiches', open: true },
+    { label: 'Nouveau retour', page: 'retours', open: true },
+    { label: 'Nouveau comptage', page: 'inventaire', open: true },
+    { label: 'Mouvements', page: 'mouvements' },
+    { label: 'Souches (n° recherche)', page: 'souches' },
+    { label: 'Billets en circulation', page: 'billets' },
+    { label: 'Fournisseurs', page: 'fournisseurs' },
+    { label: 'Commandes', page: 'commandes' },
+    { label: 'Rapports', page: 'rapports' },
+    { label: 'Paramètres', page: 'parametres' }
+  ];
+  // Méthode « nouveau » à ouvrir automatiquement après navigation
+  var QUICK_OPEN = { entrees: '_showForm', fiches: '_showEnvoiForm', retours: '_showForm', inventaire: '_showForm' };
+  var __pendingAction = null;
 
   // Construire les navigations
   function buildNav() {
@@ -52,17 +71,22 @@
     }
     drawerNav.innerHTML = drawerHtml;
 
-    // Bottom nav : 5 items (4 principaux + Plus)
+    // Bottom nav : 4 onglets autour du bouton d'action central (FAB +)
+    var leftItems = ['dashboard', 'articles'];
+    var rightItems = ['fiches', 'entrees'];
     var bottomHtml = '';
-    for (var k = 0; k < BOTTOM_ITEMS.length; k++) {
-      var bitem = findItem(BOTTOM_ITEMS[k]);
-      if (bitem) bottomHtml += '<a href="#' + bitem.id + '" data-page="' + bitem.id + '">' + bitem.icon + '<span>' + bitem.label + '</span></a>';
+    for (var k = 0; k < leftItems.length; k++) {
+      var litem = findItem(leftItems[k]);
+      if (litem) bottomHtml += '<a href="#' + litem.id + '" data-page="' + litem.id + '">' + litem.icon + '<span>' + (BOTTOM_LABELS[litem.id] || litem.label) + '</span></a>';
     }
-    // Bouton Plus
-    bottomHtml += '<a href="#" id="nav-more-btn" class="nav-more">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>' +
-      '<span>Plus</span></a>';
-
+    // Bouton central : actions rapides
+    bottomHtml += '<button type="button" id="nav-fab" class="nav-fab" aria-label="Actions rapides">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
+      '</button>';
+    for (var r = 0; r < rightItems.length; r++) {
+      var ritem = findItem(rightItems[r]);
+      if (ritem) bottomHtml += '<a href="#' + ritem.id + '" data-page="' + ritem.id + '">' + ritem.icon + '<span>' + (BOTTOM_LABELS[ritem.id] || ritem.label) + '</span></a>';
+    }
     bottomNav.innerHTML = bottomHtml;
 
     // Click handlers : drawer links
@@ -84,15 +108,69 @@
       });
     }
 
-    // Bouton Plus : ouvre le drawer
-    document.getElementById('nav-more-btn').addEventListener('click', function(e) {
+    // Bouton central : ouvre les actions rapides
+    document.getElementById('nav-fab').addEventListener('click', function(e) {
       e.preventDefault();
-      openDrawer();
+      openQuickActions();
     });
 
     // Widgets globaux : badge alerte stock bas + recherche rapide dans la topbar
     if (typeof Alertes !== 'undefined') Alertes.start();
     if (typeof GlobalSearch !== 'undefined') GlobalSearch.init();
+  }
+
+  // === Feuille d'actions rapides (bouton central +) ===
+  function buildQuickSheet() {
+    var overlay = document.getElementById('quick-sheet');
+    if (overlay) return overlay;
+
+    overlay = document.createElement('div');
+    overlay.id = 'quick-sheet';
+    overlay.className = 'sheet-overlay';
+
+    var html = '<div class="quick-sheet">' +
+      '<div class="quick-sheet-header"><h3 class="quick-sheet-title">Actions rapides</h3>' +
+      '<button type="button" id="quick-sheet-close" class="btn btn-icon" aria-label="Fermer">&times;</button></div>' +
+      '<div class="quick-sheet-section">Créer</div>' +
+      '<div class="quick-sheet-grid">';
+    for (var i = 0; i < QUICK_ACTIONS.length; i++) {
+      var qa = QUICK_ACTIONS[i];
+      var icon = qa.open
+        ? '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
+        : '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
+      html += '<button type="button" class="quick-action' + (qa.open ? ' quick-action-primary' : '') + '" data-page="' + qa.page + '"' + (qa.open ? ' data-open="1"' : '') + '>' +
+        '<span class="quick-action-icon">' + icon + '</span>' +
+        '<span class="quick-action-label">' + UI.escapeHtml(qa.label) + '</span></button>';
+    }
+    html += '</div></div>';
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay);
+
+    var actions = overlay.querySelectorAll('.quick-action');
+    for (var a = 0; a < actions.length; a++) {
+      actions[a].addEventListener('click', function() {
+        var page = this.getAttribute('data-page');
+        var open = this.getAttribute('data-open') === '1';
+        closeQuickActions();
+        if (open) __pendingAction = page;
+        navigate(page);
+      });
+    }
+    document.getElementById('quick-sheet-close').addEventListener('click', closeQuickActions);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) closeQuickActions(); });
+
+    return overlay;
+  }
+
+  function openQuickActions() {
+    buildQuickSheet().classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeQuickActions() {
+    var o = document.getElementById('quick-sheet');
+    if (o) o.classList.remove('open');
+    document.body.style.overflow = '';
   }
 
   function findItem(id) {
@@ -136,7 +214,11 @@
     // Fermer toute modale ouverte : elle ne doit pas survivre au changement de page
     var overlay = document.getElementById('modal-overlay');
     if (overlay) overlay.style.display = 'none';
-    if (currentPage === page) { closeDrawer(); return; }
+    if (currentPage === page) {
+      closeDrawer();
+      firePending(page);
+      return;
+    }
     currentPage = page;
     window.location.hash = page;
     updateNav(page);
@@ -145,6 +227,25 @@
     document.getElementById('page-content').scrollTop = 0;
     // Rafraîchir le badge d'alerte à chaque navigation (comptage léger)
     if (typeof Alertes !== 'undefined') Alertes.refresh();
+    firePending(page);
+  }
+
+  // Ouvre le formulaire « nouveau » demandé via le bouton central (+), meme si on est deja sur la page
+  function firePending(page) {
+    if (__pendingAction !== page) return;
+    __pendingAction = null;
+    var method = QUICK_OPEN[page];
+    if (!method) return;
+    var pagesMap = {
+      entrees: typeof Entrees !== 'undefined' ? Entrees : null,
+      fiches: typeof Fiches !== 'undefined' ? Fiches : null,
+      retours: typeof Retours !== 'undefined' ? Retours : null,
+      inventaire: typeof Inventaire !== 'undefined' ? Inventaire : null
+    };
+    var m = pagesMap[page];
+    if (m && typeof m[method] === 'function') {
+      setTimeout(function() { try { m[method](); } catch (e) {} }, 200);
+    }
   }
 
   function renderPage(page) {

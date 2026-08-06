@@ -336,8 +336,8 @@ var Entrees = {
 
   _pickPhoto: function(type, label) {
     var self = this;
-    // Ouvre directement la camera du telephone (input capture), sinon le selecteur de fichier
-    UI.pickFile(function(file) {
+    // Photo obligatoire via la camera du telephone (bloque sur ordinateur)
+    UI.capturePhoto(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -423,7 +423,7 @@ var Entrees = {
 
   _addPhoto: function(id) {
     var self = this;
-    UI.pickFile(function(file) {
+    UI.capturePhoto(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -441,7 +441,7 @@ var Entrees = {
         { label: 'Facture / Autre', cls: 'btn-secondary', callback: function(m) { m.close(); upload('facture'); } },
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } }
       ]);
-    }, 'image/*,.pdf');
+    });
   },
 
   _deleteEntree: function(id) {

@@ -269,6 +269,85 @@ var UI = {
     };
   },
 
+  // Prendre une photo avec la CAMERA : obligatoire sur telephone, bloque sur ordinateur.
+  // Sur mobile, ouvre une camera integree (getUserMedia) si disponible, sinon la camera
+  // native via input capture. JAMAIS la galerie ni l'explorateur de fichiers.
+  capturePhoto: function(onChange) {
+    var self = this;
+    // Ordinateur (souris, pointeur fin) : on bloque — les photos se prennent au telephone.
+    var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (!isTouch) {
+      UI.toast('📱 Cette photo doit être prise avec la caméra du téléphone.', 'warning');
+      return;
+    }
+    // Sur contexte securise (localhost/HTTPS) : camera integree. Sinon : camera native.
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      this._openCameraModal(onChange);
+    } else {
+      this.pickFile(onChange, 'image/*', true);
+    }
+  },
+
+  _openCameraModal: function(onChange) {
+    var self = this;
+    var overlay = document.getElementById('modal-overlay');
+    var content = document.getElementById('modal-content');
+    if (!overlay || !content) return;
+
+    content.innerHTML =
+      '<div class="modal-header"><h3 class="modal-title">📷 Prendre une photo</h3></div>' +
+      '<div class="modal-body" style="text-align:center">' +
+      '<video id="camera-preview" autoplay playsinline muted style="width:100%;max-height:56vh;border-radius:12px;background:#111;object-fit:cover"></video>' +
+      '<p class="text-sm text-muted mt-sm">Cadrez le document puis appuyez sur « Prendre la photo ».</p>' +
+      '</div>' +
+      '<div class="modal-actions">' +
+      '<button class="btn btn-secondary" id="camera-cancel">Annuler</button>' +
+      '<button class="btn btn-primary" id="camera-shoot">Prendre la photo</button>' +
+      '</div>';
+    overlay.style.display = 'flex';
+
+    var video = document.getElementById('camera-preview');
+    var stream = null;
+    var finished = false;
+
+    function cleanup() {
+      if (finished) return;
+      finished = true;
+      if (stream) { stream.getTracks().forEach(function(t) { try { t.stop(); } catch (e) {} }); }
+      overlay.style.display = 'none';
+    }
+
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+      .then(function(s) {
+        if (finished) { s.getTracks().forEach(function(t) { t.stop(); }); return; }
+        stream = s;
+        video.srcObject = s;
+        video.play().catch(function() {});
+      })
+      .catch(function() {
+        cleanup();
+        // Camera non disponible : repli sur la camera native (jamais la galerie)
+        self.pickFile(onChange, 'image/*', true);
+      });
+
+    document.getElementById('camera-cancel').addEventListener('click', cleanup);
+    document.getElementById('camera-shoot').addEventListener('click', function() {
+      var canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(function(blob) {
+        if (!blob) { cleanup(); UI.toast('Impossible de capturer la photo.', 'error'); return; }
+        var file = new File([blob], 'photo-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+        cleanup();
+        if (onChange) onChange(file);
+      }, 'image/jpeg', 0.85);
+    });
+
+    // Fermer au clic sur l'overlay
+    overlay.onclick = function(e) { if (e.target === overlay) cleanup(); };
+  },
+
   // Ouvre la camera du telephone (capture) ou le selecteur de fichier, puis renvoie le fichier.
   // L'input est rattache au DOM avant le .click() : indispensable sur iOS Safari/standalone.
   pickFile: function(onChange, accept, capture) {

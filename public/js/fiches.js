@@ -364,7 +364,7 @@ var Fiches = {
 
   _uploadScan: function(id) {
     var self = this;
-    UI.pickFile(function(file) {
+    UI.capturePhoto(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -374,7 +374,7 @@ var Fiches = {
         UI.toast('Scan uploade. Fiche archivee.', 'success');
         self._load();
       }).catch(function(err) { UI.toast(err.message, 'error'); });
-    }, 'image/*,.pdf');
+    });
   },
 
   _archiveFiche: function(id) {
