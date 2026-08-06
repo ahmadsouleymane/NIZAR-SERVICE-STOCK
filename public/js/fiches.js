@@ -60,8 +60,8 @@ var Fiches = {
 
     for (var i = 0; i < fiches.length; i++) {
       var f = fiches[i];
-      var statutLabel = f.statut === 'envoyee' ? 'Sortie validee' : 'Archivee';
-      var statutCls = f.statut === 'envoyee' ? 'badge-info' : 'badge-neutral';
+      var statutLabel = f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee');
+      var statutCls = f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral');
 
       html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong></td>' +
         '<td>' + UI.formatDate(f.date_envoi || f.date_creation) + '</td>' +
@@ -78,12 +78,16 @@ var Fiches = {
         html += '<button class="btn btn-sm btn-success btn-upload-scan" data-id="' + f.id + '">Scanner</button>';
       }
 
+      if (f.statut === 'envoyee') {
+        html += '<button class="btn btn-sm btn-success btn-ok-retour" data-id="' + f.id + '">OK — Retour</button>';
+      }
+
       html += '</td></tr>';
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan'].forEach(function(cls) {
+    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-ok-retour'].forEach(function(cls) {
       var btns = el.querySelectorAll('.' + cls);
       for (var j = 0; j < btns.length; j++) {
         btns[j].addEventListener('click', function() {
@@ -91,6 +95,7 @@ var Fiches = {
           if (this.classList.contains('btn-view-fiche')) self._viewFiche(id);
           else if (this.classList.contains('btn-dl-pdf')) self._downloadPDF(id);
           else if (this.classList.contains('btn-upload-scan')) self._uploadScan(id);
+          else if (this.classList.contains('btn-ok-retour')) self._okRetour(id);
         });
       }
     });
@@ -212,7 +217,7 @@ var Fiches = {
       var f = data.fiche, lignes = data.lignes;
 
       var html = '<div style="font-size:0.9rem">' +
-        '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.statut === 'envoyee' ? 'badge-info' : 'badge-neutral') + '">' + (f.statut === 'envoyee' ? 'Sortie validee' : 'Archivee') + '</span></div></div>' +
+        '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral')) + '">' + (f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee')) + '</span></div></div>' +
         '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>';
 
       if (f.notes) html += '<p class="mb-md"><strong>Notes:</strong> ' + UI.escapeHtml(f.notes) + '</p>';
@@ -238,6 +243,9 @@ var Fiches = {
       var actions = [{ label: 'Fermer', cls: 'btn-secondary', callback: function(m) { m.close(); } }];
       if (f.statut === 'envoyee') {
         actions.unshift({ label: 'Archiver', cls: 'btn-secondary', callback: function(m) { m.close(); self._archiveFiche(id); } });
+      }
+      if (f.statut === 'envoyee') {
+        actions.unshift({ label: 'OK — Retour recu', cls: 'btn-success', callback: function(m) { m.close(); self._okRetour(id); } });
       }
       if (f.fichier_path) {
         actions.unshift({ label: 'Telecharger PDF', cls: 'btn-accent', callback: function(m) { self._downloadPDF(id); } });
@@ -300,6 +308,17 @@ var Fiches = {
       if (!ok) return;
       API.changeStatutFiche(id, 'archivee').then(function() { UI.toast('Fiche archivee.', 'success'); self._load(); })
         .catch(function(err) { UI.toast(err.message, 'error'); });
+    });
+  },
+
+  _okRetour: function(id) {
+    var self = this;
+    UI.confirm('Marquer « OK » (retour signe recu) sur cette fiche ? Le document signe est renvoye par l agence.').then(function(ok) {
+      if (!ok) return;
+      API.changeStatutFiche(id, 'signee').then(function() {
+        UI.toast('Retour valide — fiche marquee OK. Le PDF reste imprimable a tout moment.', 'success');
+        self._load();
+      }).catch(function(err) { UI.toast(err.message, 'error'); });
     });
   }
 };
