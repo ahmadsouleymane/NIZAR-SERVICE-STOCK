@@ -290,23 +290,24 @@ var UI = {
 
   _openCameraModal: function(onChange) {
     var self = this;
-    var overlay = document.getElementById('modal-overlay');
-    var content = document.getElementById('modal-content');
-    if (!overlay || !content) return;
 
-    content.innerHTML =
-      '<div class="modal-header"><h3 class="modal-title">📷 Prendre une photo</h3></div>' +
-      '<div class="modal-body" style="text-align:center">' +
-      '<video id="camera-preview" autoplay playsinline muted style="width:100%;max-height:56vh;border-radius:12px;background:#111;object-fit:cover"></video>' +
-      '<p class="text-sm text-muted mt-sm">Cadrez le document puis appuyez sur « Prendre la photo ».</p>' +
-      '</div>' +
-      '<div class="modal-actions">' +
+    // Overlay DEDIE a la camera : independant de la modale du formulaire, donc
+    // si getUserMedia echoue ou qu'on annule, le formulaire reste intact.
+    var overlay = document.createElement('div');
+    overlay.className = 'camera-overlay';
+    overlay.innerHTML =
+      '<div class="camera-box">' +
+      '<div class="camera-header"><h3>📷 Prendre une photo</h3>' +
+      '<button type="button" id="camera-x" class="camera-close" aria-label="Fermer">&times;</button></div>' +
+      '<video id="camera-preview" autoplay playsinline muted></video>' +
+      '<p class="camera-hint">Cadrez le document puis prenez la photo.</p>' +
+      '<div class="camera-actions">' +
       '<button class="btn btn-secondary" id="camera-cancel">Annuler</button>' +
       '<button class="btn btn-primary" id="camera-shoot">Prendre la photo</button>' +
-      '</div>';
-    overlay.style.display = 'flex';
+      '</div></div>';
+    document.body.appendChild(overlay);
 
-    var video = document.getElementById('camera-preview');
+    var video = overlay.querySelector('#camera-preview');
     var stream = null;
     var finished = false;
 
@@ -314,7 +315,7 @@ var UI = {
       if (finished) return;
       finished = true;
       if (stream) { stream.getTracks().forEach(function(t) { try { t.stop(); } catch (e) {} }); }
-      overlay.style.display = 'none';
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
 
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
@@ -325,27 +326,46 @@ var UI = {
         video.play().catch(function() {});
       })
       .catch(function() {
+        // Fermer l'overlay caméra SANS toucher au formulaire, puis repli camera native
         cleanup();
-        // Camera non disponible : repli sur la camera native (jamais la galerie)
         self.pickFile(onChange, 'image/*', true);
       });
 
-    document.getElementById('camera-cancel').addEventListener('click', cleanup);
-    document.getElementById('camera-shoot').addEventListener('click', function() {
-      var canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth || 1280;
-      canvas.height = video.videoHeight || 720;
-      canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(function(blob) {
-        if (!blob) { cleanup(); UI.toast('Impossible de capturer la photo.', 'error'); return; }
-        var file = new File([blob], 'photo-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+    overlay.querySelector('#camera-cancel').addEventListener('click', cleanup);
+    overlay.querySelector('#camera-x').addEventListener('click', cleanup);
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) cleanup(); });
+    overlay.querySelector('#camera-shoot').addEventListener('click', function() {
+      try {
+        // Redimensionner la capture pour eviter un crash memoire sur telephone bas de gamme
+        var maxDim = 1600;
+        var w = video.videoWidth || 1280;
+        var h = video.videoHeight || 720;
+        if (w > maxDim || h > maxDim) {
+          var ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+        canvas.toBlob(function(blob) {
+          if (!blob) { cleanup(); UI.toast('Impossible de capturer la photo.', 'error'); return; }
+          var file;
+          try {
+            file = new File([blob], 'photo-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+          } catch (e) {
+            file = blob;
+            file.name = 'photo-' + Date.now() + '.jpg';
+          }
+          cleanup();
+          if (onChange) onChange(file);
+        }, 'image/jpeg', 0.8);
+      } catch (e) {
         cleanup();
-        if (onChange) onChange(file);
-      }, 'image/jpeg', 0.85);
+        UI.toast('Erreur de capture : ' + e.message, 'error');
+      }
     });
-
-    // Fermer au clic sur l'overlay
-    overlay.onclick = function(e) { if (e.target === overlay) cleanup(); };
   },
 
   // Ouvre la camera du telephone (capture) ou le selecteur de fichier, puis renvoie le fichier.

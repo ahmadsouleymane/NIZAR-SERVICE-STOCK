@@ -11,11 +11,14 @@ const router = express.Router();
 const upload = createUpload('photo');
 
 function generateRef(db) {
+  // Reference basee sur la sequence autoincrement : jamais reutilisee, donc pas de collision
+  // (meme apres une suppression, contrairement a un simple compteur).
   const now = new Date();
   const y = now.getFullYear().toString().slice(-2);
   const m = String(now.getMonth() + 1).padStart(2, '0');
-  const count = db.prepare("SELECT COUNT(*) as c FROM fiches_entree WHERE created_at >= date('now','localtime')").get().c;
-  return 'FE-' + y + m + '-' + String(count + 1).padStart(3, '0');
+  const seq = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'fiches_entree'").get();
+  const next = (seq ? seq.seq : 0) + 1;
+  return 'FE-' + y + m + '-' + String(next).padStart(3, '0');
 }
 
 // GET /api/entrees — liste

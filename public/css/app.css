@@ -476,6 +476,64 @@ ul, ol { list-style: none; }
   .quick-sheet { border-radius: var(--radius-xl); margin-bottom: 0.75rem; }
 }
 
+/* ===== Camera (prise de photo) — overlay dédié, indépendant des modales ===== */
+.camera-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.camera-box {
+  width: 100%;
+  max-width: 480px;
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+.camera-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1rem;
+  border-bottom: 1px solid var(--color-border);
+}
+.camera-header h3 { font-size: 1rem; }
+.camera-close {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--color-muted);
+  border-radius: 50%;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--color-fg);
+}
+.camera-box video {
+  width: 100%;
+  max-height: 56vh;
+  object-fit: cover;
+  background: #111;
+  display: block;
+}
+.camera-hint {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  padding: 0.5rem 1rem;
+}
+.camera-actions {
+  display: flex;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+}
+.camera-actions .btn { flex: 1; }
+
 /* Badge de comptage sur icône */
 .nav-badge {
   position: absolute;

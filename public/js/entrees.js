@@ -123,8 +123,10 @@ var Entrees = {
       self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
       self._acLignes = [];
       self._fournAC = null;
-      self._photoBL = null;
-      self._photoFacture = null;
+      // Brouillon : cree a la premiere photo, les photos sont televersees immediatement
+      self._draftId = null;
+      self._draftRef = null;
+      self._photosDone = { bl: false, facture: false };
       self._draftPhotos = { bl: false, facture: false };
 
       var body =
@@ -252,43 +254,30 @@ var Entrees = {
 
   _saveEntree: function(modal) {
     var self = this;
-    var fourn = this._fournAC ? this._fournAC.value() : null;
-    var fournisseurId = fourn ? fourn.id : null;
-    var numero_bl = document.getElementById('entree-bl').value.trim() || null;
-    var numero_facture = document.getElementById('entree-facture').value.trim() || null;
-
-    if (!self._photoBL || !self._photoFacture) {
+    // Le brouillon et les photos sont deja crees/televerses a la prise de photo.
+    // Ici on valide simplement (stock mis a jour) une fois les deux photos presentes.
+    if (!self._draftId) {
+      UI.toast('Prenez d\'abord les photos du bon de livraison et de la facture.', 'error');
+      return;
+    }
+    var done = self._photosDone || {};
+    if (!done.bl || !done.facture) {
       UI.toast('Les photos du bon de livraison et de la facture sont obligatoires.', 'error');
       return;
     }
 
-    var arts = [];
-    for (var i = 0; i < this._lignes.length; i++) {
-      var l = this._lignes[i];
-      if (!l.article_id) { UI.toast('Tous les articles sont requis.', 'error'); return; }
-      arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
-    }
-
-    API.createEntree({ fournisseur_id: fournisseurId, numero_bl: numero_bl, numero_facture: numero_facture, articles: arts })
-      .then(function(data) {
-        var id = data.fiche.id;
-        // Upload BL puis facture, puis validation (stock mis a jour uniquement a la validation)
-        return API.uploadEntreePhoto(id, self._photoBL, 'bl')
-          .then(function(d) { if (d && d.error) throw new Error(d.error); return API.uploadEntreePhoto(id, self._photoFacture, 'facture'); })
-          .then(function(d) { if (d && d.error) throw new Error(d.error); return API.validerEntree(id); })
-          .then(function() {
-            UI.toast('Entree validee — stock mis a jour.', 'success');
-            modal.close();
-            self._load();
-          })
-          .catch(function(err) {
-            // La fiche reste en brouillon : reprise possible depuis le tableau (bouton Continuer)
-            modal.close();
-            self._load();
-            UI.toast(err.message + ' L entree reste en attente de validation.', 'error');
-          });
+    API.validerEntree(self._draftId)
+      .then(function() {
+        UI.toast('Entrée validée — stock mis à jour.', 'success');
+        modal.close();
+        self._load();
       })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
+      .catch(function(err) {
+        // La fiche reste en brouillon : reprise possible depuis le tableau (bouton Continuer)
+        UI.toast(err.message + ' L\'entrée reste en attente de validation.', 'error');
+        modal.close();
+        self._load();
+      });
   },
 
   _viewEntree: function(id) {
@@ -341,22 +330,54 @@ var Entrees = {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
-      if (type === 'bl') self._photoBL = file;
-      else self._photoFacture = file;
-
-      var preview = document.getElementById(type === 'bl' ? 'preview-bl' : 'preview-facture');
-      if (preview) {
-        preview.innerHTML = '<img src="' + URL.createObjectURL(file) + '" style="width:100%;height:80px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px" alt="' + UI.escapeHtml(label) + '">' +
-          '<span class="text-sm text-muted" style="display:block">Photo OK</span>';
+      function doUpload(id) {
+        // Televersement IMMEDIAT : la photo est sauvee sur le serveur avant tout
+        // risque de perte (passage en arriere-plan de l'app, rechargement...)
+        API.uploadEntreePhoto(id, file, type).then(function(d) {
+          if (d && d.error) { UI.toast(d.error, 'error'); return; }
+          self._photosDone[type] = true;
+          var preview = document.getElementById(type === 'bl' ? 'preview-bl' : 'preview-facture');
+          if (preview) {
+            preview.innerHTML = '<img src="' + URL.createObjectURL(file) + '" style="width:100%;height:80px;object-fit:cover;border:1px solid var(--color-border);border-radius:8px" alt="' + UI.escapeHtml(label) + '">' +
+              '<span class="text-sm text-muted" style="display:block">Photo ' + UI.escapeHtml(label) + ' enregistrée</span>';
+          }
+          self._refreshValiderBtn();
+          UI.toast('Photo ' + label + ' enregistrée.', 'success');
+        }).catch(function(err) { UI.toast(err.message, 'error'); });
       }
-      self._refreshValiderBtn();
+
+      // Brouillon deja cree (reprise ou 2e photo) : uploader directement
+      if (self._draftId) { doUpload(self._draftId); return; }
+
+      // Sinon : verifier les articles puis creer le brouillon
+      var arts = [];
+      for (var i = 0; i < self._lignes.length; i++) {
+        var l = self._lignes[i];
+        if (!l.article_id) { UI.toast('Ajoutez d\'abord les articles avant de prendre les photos.', 'error'); return; }
+        arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
+      }
+      if (!arts.length) { UI.toast('Ajoutez d\'abord les articles avant de prendre les photos.', 'error'); return; }
+
+      var fourn = self._fournAC ? self._fournAC.value() : null;
+      var blInput = document.getElementById('entree-bl');
+      var factInput = document.getElementById('entree-facture');
+      var numeroBL = blInput ? blInput.value.trim() || null : null;
+      var numeroFact = factInput ? factInput.value.trim() || null : null;
+
+      API.createEntree({ fournisseur_id: fourn ? fourn.id : null, numero_bl: numeroBL, numero_facture: numeroFact, articles: arts })
+        .then(function(data) {
+          self._draftId = data.fiche.id;
+          self._draftRef = data.fiche.reference;
+          doUpload(self._draftId);
+        })
+        .catch(function(err) { UI.toast(err.message, 'error'); });
     });
   },
 
-  // Active/desactive le bouton « Valider » selon la presence des deux photos
+  // Active/desactive le bouton « Valider » selon la presence des deux photos (televersees)
   _refreshValiderBtn: function() {
-    var base = this._draftPhotos || { bl: false, facture: false };
-    var ok = (this._photoBL || base.bl) && (this._photoFacture || base.facture);
+    var done = this._photosDone || { bl: false, facture: false };
+    var ok = !!done.bl && !!done.facture;
     var btn = document.getElementById('modal-btn-1');
     if (!btn) return;
     btn.disabled = !ok;
@@ -372,27 +393,28 @@ var Entrees = {
       var hasBL = (data.photos || []).some(function(p) { return p.type === 'bl'; });
       var hasFacture = (data.photos || []).some(function(p) { return p.type === 'facture'; });
 
-      self._photoBL = null;
-      self._photoFacture = null;
+      self._draftId = id;
+      self._draftRef = f.reference;
+      self._photosDone = { bl: hasBL, facture: hasFacture };
       self._draftPhotos = { bl: hasBL, facture: hasFacture };
 
       var body =
-        '<div class="mb-md"><strong>Entree ' + UI.escapeHtml(f.reference) + '</strong> — les deux photos sont requises pour valider.</div>' +
+        '<div class="mb-md"><strong>Entree ' + UI.escapeHtml(f.reference) + '</strong> — les deux photos sont requises pour valider. (Les nouvelles photos sont enregistrées immédiatement.)</div>' +
         '<div class="flex-wrap" style="display:flex;gap:12px">' +
         '<div style="flex:1;min-width:140px;border:1px dashed var(--color-border);border-radius:10px;padding:10px;text-align:center">' +
         '<strong class="text-sm">Bon de livraison</strong>' +
-        '<div id="preview-bl" style="margin:8px 0">' + (hasBL ? '<span class="badge badge-success">Photo BL presente</span>' : '<span class="text-muted text-sm">Aucune photo</span>') + '</div>' +
+        '<div id="preview-bl" style="margin:8px 0">' + (hasBL ? '<span class="badge badge-success">Photo BL présente</span>' : '<span class="text-muted text-sm">Aucune photo</span>') + '</div>' +
         '<button class="btn btn-sm btn-secondary" id="btn-photo-bl">' + (hasBL ? 'Remplacer' : 'Prendre une photo') + '</button>' +
         '</div>' +
         '<div style="flex:1;min-width:140px;border:1px dashed var(--color-border);border-radius:10px;padding:10px;text-align:center">' +
         '<strong class="text-sm">Facture</strong>' +
-        '<div id="preview-facture" style="margin:8px 0">' + (hasFacture ? '<span class="badge badge-success">Photo facture presente</span>' : '<span class="text-muted text-sm">Aucune photo</span>') + '</div>' +
+        '<div id="preview-facture" style="margin:8px 0">' + (hasFacture ? '<span class="badge badge-success">Photo facture présente</span>' : '<span class="text-muted text-sm">Aucune photo</span>') + '</div>' +
         '<button class="btn btn-sm btn-secondary" id="btn-photo-facture">' + (hasFacture ? 'Remplacer' : 'Prendre une photo') + '</button>' +
         '</div></div>';
 
       UI.modal('Valider l entree ' + UI.escapeHtml(f.reference), body, [
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-        { label: 'Valider l entree', cls: 'btn-primary', callback: function(m) { self._validerDraft(m, id, hasBL, hasFacture); } }
+        { label: 'Valider l entree', cls: 'btn-primary', callback: function(m) { self._validerDraft(m, id); } }
       ]);
 
       document.getElementById('btn-photo-bl').addEventListener('click', function() { self._pickPhoto('bl', 'Bon de livraison'); });
@@ -401,23 +423,19 @@ var Entrees = {
     }).catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
-  _validerDraft: function(modal, id, hasBL, hasFacture) {
+  _validerDraft: function(modal, id) {
     var self = this;
-    var uploads = [];
-    if (self._photoBL) uploads.push(API.uploadEntreePhoto(id, self._photoBL, 'bl').then(function(d) { if (d && d.error) throw new Error(d.error); }));
-    if (self._photoFacture) uploads.push(API.uploadEntreePhoto(id, self._photoFacture, 'facture').then(function(d) { if (d && d.error) throw new Error(d.error); }));
-
-    Promise.all(uploads)
-      .then(function() { return API.validerEntree(id); })
+    // Les photos ont deja ete televersees a la prise (ou presentes en base) : on valide.
+    API.validerEntree(id)
       .then(function() {
-        UI.toast('Entree validee — stock mis a jour.', 'success');
+        UI.toast('Entrée validée — stock mis à jour.', 'success');
         modal.close();
         self._load();
       })
       .catch(function(err) {
         modal.close();
         self._load();
-        UI.toast(err.message + ' L entree reste en attente de validation.', 'error');
+        UI.toast(err.message + ' L\'entrée reste en attente de validation.', 'error');
       });
   },
 
