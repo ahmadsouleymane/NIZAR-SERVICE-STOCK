@@ -230,6 +230,17 @@ const API = {
     return '/api/rapports/consommation' + (qs ? '?' + qs : '');
   },
 
+  // Sauvegarde de la base (admin)
+  async downloadBackup() {
+    return this.downloadRapport('/api/backup', 'sauvegarde-nizar.db');
+  },
+
+  // Journal d'audit (admin)
+  async getAuditLog(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/audit' + (qs ? '?' + qs : ''));
+  },
+
   async downloadRapport(url, filename) {
     const token = this.getToken();
     const res = await fetch(url, {
@@ -382,6 +393,23 @@ const API = {
 
   async getSeriesArticle(article_id) {
     return this.fetch('/api/series/' + article_id);
+  },
+
+  async searchSerie(numero) {
+    return this.fetch('/api/series/recherche?numero=' + encodeURIComponent(numero));
+  },
+
+  // Inventaires
+  async getInventaires(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/inventaires' + (qs ? '?' + qs : ''));
+  },
+
+  async createInventaire(data) {
+    return this.fetch('/api/inventaires', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
   },
 
   // Import Excel

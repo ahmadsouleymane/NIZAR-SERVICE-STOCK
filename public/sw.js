@@ -1,5 +1,5 @@
 // public/sw.js - Service Worker Nizar Stock
-var CACHE_NAME = 'nizar-stock-v1';
+var CACHE_NAME = 'nizar-stock-v2';
 var STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -12,6 +12,11 @@ var STATIC_ASSETS = [
   '/js/mouvements.js',
   '/js/fournisseurs.js',
   '/js/commandes.js',
+  '/js/fiches.js',
+  '/js/entrees.js',
+  '/js/retours.js',
+  '/js/souches.js',
+  '/js/inventaire.js',
   '/js/rapports.js',
   '/js/parametres.js',
   '/manifest.json'
