@@ -103,6 +103,10 @@ router.post('/', authenticate, async (req, res) => {
 
     ficheId = result.lastInsertRowid;
 
+    // Numero de facture stable et unique : base sur l'id autoincrement (jamais reutilise)
+    const numeroFacture = 'FACT-' + new Date().getFullYear() + '-' + String(ficheId).padStart(5, '0');
+    db.prepare('UPDATE fiches_reception SET numero_facture = ? WHERE id = ?').run(numeroFacture, ficheId);
+
     const insertLigne = db.prepare(`
       INSERT INTO fiche_reception_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation)
       VALUES (?, ?, ?, ?, ?, ?)
@@ -202,6 +206,26 @@ router.get('/:id/pdf', authenticate, (req, res) => {
     .catch(err => res.status(500).json({ error: 'Erreur generation PDF: ' + err.message }));
 });
 
+// POST /api/fiches/:id/imprimer — impression A4 + archivage automatique
+router.post('/:id/imprimer', authenticate, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
+
+  // Le PDF n'est PAS regenere ici : il est deja sur disque (fichier_path).
+  // L'archivage se fait une fois l'impression A4 terminee (appele par le front apres print()).
+  if (fiche.statut === 'envoyee' || fiche.statut === 'signee') {
+    db.prepare("UPDATE fiches_reception SET statut = 'archivee', updated_at = datetime('now','localtime') WHERE id = ?").run(req.params.id);
+  }
+
+  logAudit(db, req.user.id, req.user.username, 'IMPRIMER_FICHE', fiche.reference || String(req.params.id));
+
+  const updated = db.prepare(`
+    SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+  `).get(req.params.id);
+  res.json({ fiche: updated, message: 'Fiche archivee apres impression.' });
+});
+
 // PATCH /api/fiches/:id/statut — changer statut
 router.patch('/:id/statut', authenticate, (req, res) => {
   const db = req.db;
@@ -249,7 +273,12 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
+  const lignes = db.prepare('SELECT * FROM fiche_reception_articles WHERE fiche_id = ?').all(req.params.id);
+
   const transaction = db.transaction(() => {
+    // Restaurer le stock : la sortie etait une diminution, on la rend au stock
+    const updateStock = db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?');
+    for (const l of lignes) updateStock.run(l.quantite, l.article_id);
     // Supprimer les mouvements lies
     db.prepare('DELETE FROM mouvements WHERE fiche_id = ?').run(req.params.id);
     // Supprimer les numeros de souche lies a cette sortie

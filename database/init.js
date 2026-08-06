@@ -7,7 +7,8 @@ function initDB(dbPath) {
   const dbPathResolved = dbPath || path.join(__dirname, 'nizar.db');
   const db = new Database(dbPathResolved);
 
-  db.pragma('journal_mode = WAL');
+  // Mode fichier unique (DELETE) : une seule base nizar.db, sans fichiers -wal/-shm
+  db.pragma('journal_mode = DELETE');
   db.pragma('foreign_keys = ON');
 
   db.exec(`
@@ -225,6 +226,21 @@ function initDB(dbPath) {
   ensureColumn(db, 'localites', 'est_service', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'fiches_reception', 'destinataire', 'TEXT');
   ensureColumn(db, 'fiches_reception', 'scan_path', 'TEXT');
+  ensureColumn(db, 'fiches_reception', 'numero_facture', 'TEXT');
+  ensureColumn(db, 'fiches_entree', 'validee', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'fiches_entree', 'articles_json', 'TEXT');
+
+  // Migration : les fiches d'entree creees avant le flag validee etaient toutes
+  // deja validees (lignes en base). On les marque validee=1 pour ne pas les
+  // presenter comme des brouillons en attente de photos. Un vrai brouillon
+  // (aucune ligne fiche_entree_articles) reste a 0. Idempotent.
+  db.exec(`
+    UPDATE fiches_entree SET validee = 1
+    WHERE validee = 0 AND (
+      EXISTS (SELECT 1 FROM fiche_entree_articles fea WHERE fea.fiche_id = fiches_entree.id)
+      OR statut = 'archivee'
+    )
+  `);
 
   // Seeds
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');

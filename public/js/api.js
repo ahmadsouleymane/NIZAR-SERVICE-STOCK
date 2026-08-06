@@ -229,6 +229,11 @@ const API = {
     const qs = new URLSearchParams(params).toString();
     return '/api/rapports/consommation' + (qs ? '?' + qs : '');
   },
+  getRapportSortiesAgenceUrl(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return '/api/rapports/sorties-agence' + (qs ? '?' + qs : '');
+  },
+  getRapportStockPdfUrl() { return '/api/rapports/stock-pdf'; },
 
   // Sauvegarde de la base (admin)
   async downloadBackup() {
@@ -324,6 +329,12 @@ const API = {
     });
   },
 
+  async imprimerFiche(id) {
+    return this.fetch('/api/fiches/' + id + '/imprimer', {
+      method: 'POST'
+    });
+  },
+
   async uploadScanFiche(id, file) {
     var token = this.getToken();
     var formData = new FormData();
@@ -369,6 +380,12 @@ const API = {
     return this.fetch('/api/entrees', {
       method: 'POST',
       body: JSON.stringify(data)
+    });
+  },
+
+  async validerEntree(id) {
+    return this.fetch('/api/entrees/' + id + '/valider', {
+      method: 'POST'
     });
   },
 

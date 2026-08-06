@@ -94,13 +94,15 @@ function generateFichePDF(fiche, lignes) {
       (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
     doc.text(destFull, MARGIN + 95, infoY + 22, { width: 200 });
 
-    // Colonne droite : Date + Destinataire
+    // Colonne droite : Date + N° facture + Destinataire
     doc.fontSize(9).font('Helvetica-Bold');
     doc.text('DATE', PAGE_W - MARGIN - 120, infoY);
-    doc.text('DESTINATAIRE', PAGE_W - MARGIN - 120, infoY + 22);
+    doc.text('N° FACTURE', PAGE_W - MARGIN - 120, infoY + 22);
+    doc.text('DESTINATAIRE', PAGE_W - MARGIN - 120, infoY + 44);
     doc.font('Helvetica').fontSize(10);
-    doc.text(formatDate(fiche.date_envoi || fiche.date_creation), PAGE_W - MARGIN - 120, infoY);
-    doc.text(fiche.destinataire || '-', PAGE_W - MARGIN - 120, infoY + 22);
+    doc.text(formatDate(fiche.date_envoi || fiche.date_creation), PAGE_W - MARGIN - 120, infoY, { width: 120 });
+    doc.text(fiche.numero_facture || '-', PAGE_W - MARGIN - 120, infoY + 22, { width: 120 });
+    doc.text(fiche.destinataire || '-', PAGE_W - MARGIN - 120, infoY + 44, { width: 120 });
 
     // Notes (si presentes)
     let notesHeight = 0;
@@ -277,6 +279,127 @@ function generateFichePDF(fiche, lignes) {
   });
 }
 
+/**
+ * Genere un PDF « Etat du stock » et le streame directement dans la reponse HTTP.
+ * Reutilise le style Nizar (logo + en-tete + tableau) de generateFichePDF.
+ * @param {Array} articles - [{ reference, nom, stock_actuel, stock_min, prix_unitaire, fournisseur }]
+ * @param {Object} res - reponse Express (Content-Type et Content-Disposition a positionner avant)
+ */
+function generateStockPDF(articles, res) {
+  const doc = new PDFDocument({ size: 'A4', margin: MARGIN, bufferPages: true });
+  doc.pipe(res);
+
+  // === EN-TETE : LOGO + TITRE ===
+  const logoSize = 50;
+  let hasLogo = false;
+  try {
+    if (fs.existsSync(LOGO_PATH)) {
+      doc.image(LOGO_PATH, MARGIN, MARGIN, { width: logoSize, height: logoSize });
+      hasLogo = true;
+    }
+  } catch (e) { /* logo non disponible */ }
+
+  const titleX = hasLogo ? MARGIN + logoSize + 15 : MARGIN;
+
+  doc.fontSize(11).font('Helvetica-Bold').fillColor(BLACK);
+  doc.text('NIZAR TRANSPORT VOYAGEUR', titleX, MARGIN + 4, { align: 'left' });
+
+  doc.fontSize(20).font('Helvetica-Bold').fillColor(TEAL);
+  doc.text('ETAT DU STOCK', titleX, MARGIN + 22, { align: 'left' });
+
+  doc.fontSize(9).font('Helvetica').fillColor(MEDIUM_GRAY);
+  doc.text('Genere le ' + new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }), titleX, MARGIN + 46, { align: 'left' });
+
+  const sepY = MARGIN + logoSize + 12;
+  doc.moveTo(MARGIN, sepY).lineTo(PAGE_W - MARGIN, sepY)
+    .strokeColor(TEAL).lineWidth(2).stroke();
+  doc.strokeColor(BLACK).lineWidth(0.5);
+
+  // === TABLEAU DES ARTICLES ===
+  const colW = [70, 100, 40, 40, 65, 100, 70]; // Reference | Nom | Stock | Min | Statut | Fournisseur | Valeur
+  const colX = [MARGIN, MARGIN + 70, MARGIN + 170, MARGIN + 210, MARGIN + 250, MARGIN + 315, MARGIN + 415];
+  const headers = ['Reference', 'Nom', 'Stock', 'Min', 'Statut', 'Fournisseur', 'Valeur'];
+  const HEADER_H = 22;
+  const tableTop = sepY + 24;
+  const maxBottom = PAGE_H - 100;
+
+  function drawHeader(y) {
+    doc.rect(MARGIN, y, CONTENT_W, HEADER_H).fill(BLACK);
+    doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(8);
+    for (let i = 0; i < headers.length; i++) {
+      doc.text(headers[i], colX[i] + 3, y + 6, { width: colW[i] - 6, align: i === 0 || i === 1 || i === 5 ? 'left' : 'center' });
+    }
+    doc.fillColor(BLACK);
+  }
+
+  drawHeader(tableTop);
+
+  let rowY = tableTop + HEADER_H;
+  let totalValeur = 0;
+
+  for (let i = 0; i < articles.length; i++) {
+    const a = articles[i];
+    const statut = a.stock_actuel <= 0 ? 'RUPTURE' : (a.stock_actuel <= a.stock_min ? 'ALERTE' : 'OK');
+    const valeur = (a.prix_unitaire || 0) * (a.stock_actuel || 0);
+    totalValeur += valeur;
+
+    if (rowY + 22 > maxBottom) {
+      doc.addPage();
+      rowY = MARGIN + 10;
+      drawHeader(rowY);
+      rowY += HEADER_H;
+    }
+
+    if (i % 2 === 0) {
+      doc.rect(MARGIN, rowY, CONTENT_W, 22).fill(LIGHT_GRAY);
+      doc.fillColor(BLACK);
+    }
+
+    doc.font('Helvetica').fontSize(8.5);
+    doc.text(a.reference || '-', colX[0] + 3, rowY + 3, { width: colW[0] - 6 });
+    doc.text(a.nom || '-', colX[1] + 3, rowY + 3, { width: colW[1] - 6, ellipsis: true, height: 18 });
+    doc.text(String(a.stock_actuel), colX[2] + 3, rowY + 3, { width: colW[2] - 6, align: 'center' });
+    doc.text(String(a.stock_min), colX[3] + 3, rowY + 3, { width: colW[3] - 6, align: 'center' });
+    doc.font('Helvetica-Bold').fontSize(8);
+    doc.fillColor(statut === 'RUPTURE' ? '#DC2626' : (statut === 'ALERTE' ? '#D97706' : '#16A34A'));
+    doc.text(statut, colX[4] + 3, rowY + 3, { width: colW[4] - 6, align: 'center' });
+    doc.fillColor(BLACK).font('Helvetica').fontSize(8.5);
+    doc.text(a.fournisseur || '-', colX[5] + 3, rowY + 3, { width: colW[5] - 6, ellipsis: true, height: 18 });
+    doc.text(formatFCFA(valeur), colX[6] + 3, rowY + 3, { width: colW[6] - 6, align: 'center' });
+
+    rowY += 22;
+  }
+
+  // === TOTAL ===
+  let totalY = rowY + 12;
+  if (totalY + 40 > PAGE_H - 30) {
+    doc.addPage();
+    totalY = MARGIN + 40;
+  }
+  doc.moveTo(MARGIN, totalY).lineTo(PAGE_W - MARGIN, totalY)
+    .strokeColor('#E5E5E5').lineWidth(0.5).stroke();
+  doc.strokeColor(BLACK).lineWidth(0.5);
+  doc.font('Helvetica-Bold').fontSize(9).fillColor(BLACK);
+  doc.text('VALEUR TOTALE DU STOCK', MARGIN, totalY + 8, { width: 300 });
+  doc.fillColor(TEAL);
+  doc.text(formatFCFA(totalValeur), colX[6], totalY + 8, { width: colW[6], align: 'center' });
+
+  // === PIED DE PAGE ===
+  doc.fillColor(MEDIUM_GRAY).fontSize(7).font('Helvetica');
+  doc.text('Nizar Stock — Nizar Transport Voyageur — Document genere le ' +
+    new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }), MARGIN, PAGE_H - 35, { align: 'center', width: CONTENT_W });
+
+  doc.rect(MARGIN - 5, MARGIN - 5, CONTENT_W + 10, PAGE_H - 2 * MARGIN + 10)
+    .strokeColor(TEAL).lineWidth(0.5).opacity(0.3).stroke();
+  doc.opacity(1);
+
+  doc.end();
+}
+
+function formatFCFA(n) {
+  return Number(n || 0).toLocaleString('fr-FR');
+}
+
 function formatDate(isoStr) {
   if (!isoStr) return '-';
   const d = new Date(isoStr);
@@ -284,4 +407,4 @@ function formatDate(isoStr) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-module.exports = { generateFichePDF };
+module.exports = { generateFichePDF, generateStockPDF };

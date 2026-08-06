@@ -68,7 +68,8 @@ router.get('/:id', authenticate, (req, res) => {
   res.json({ fiche, lignes, photos });
 });
 
-// POST /api/entrees — creer une entree (aucune impression)
+// POST /api/entrees — creer un brouillon d'entree (stock NON incremente avant validation)
+// Les articles saisis sont conserves dans articles_json et lus a la validation.
 router.post('/', authenticate, (req, res) => {
   const db = req.db;
   const { fournisseur_id, numero_bl, numero_facture, notes, articles } = req.body;
@@ -92,11 +93,49 @@ router.post('/', authenticate, (req, res) => {
   try {
     const transaction = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, notes, user_id, statut)
-        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee')
-      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, notes || null, req.user.id);
+        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, notes, user_id, statut, validee, articles_json)
+        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee', 0, ?)
+      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, notes || null, req.user.id, JSON.stringify(articles));
       ficheId = result.lastInsertRowid;
+    });
+    transaction();
+  } catch (err) {
+    // Erreur technique (SQLite/disque) : laisser le handler global de server.js la mapper
+    // (FK→400, UNIQUE→409, CHECK→400, sinon 500). 400 reserve aux erreurs metier.
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
 
+  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(ficheId);
+  logAudit(db, req.user.id, req.user.username, 'CREER_ENTREE', reference);
+  res.status(201).json({ fiche, message: 'Brouillon cree. Photos du bon de livraison et de la facture requises avant validation.' });
+});
+
+// POST /api/entrees/:id/valider — valider un brouillon (photos BL + facture obligatoires)
+// Reutilise la validation des articles, l'insertion des lignes, des mouvements et du stock
+// qui etait auparavant dans POST /. No-op si deja validee.
+router.post('/:id/valider', authenticate, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
+  if (fiche.validee === 1) return res.status(400).json({ error: 'Entree deja validee.' });
+
+  // Photo du bon de livraison ET de la facture obligatoires
+  const hasBL = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'bl'").get(req.params.id).c;
+  const hasFacture = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'facture'").get(req.params.id).c;
+  if (hasBL === 0 || hasFacture === 0) {
+    const missing = [];
+    if (hasBL === 0) missing.push('bon de livraison');
+    if (hasFacture === 0) missing.push('facture');
+    return res.status(400).json({ error: 'Validation impossible : photo ' + missing.join(' et photo ') + ' manquante.' });
+  }
+
+  let articles;
+  try { articles = JSON.parse(fiche.articles_json || '[]'); } catch (e) { articles = []; }
+  if (!articles || !articles.length) return res.status(400).json({ error: 'Aucun article enregistre sur cette entree.' });
+
+  try {
+    const transaction = db.transaction(() => {
       const insertLigne = db.prepare(`
         INSERT INTO fiche_entree_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation)
         VALUES (?, ?, ?, ?, ?, ?)
@@ -112,6 +151,8 @@ router.post('/', authenticate, (req, res) => {
       for (const art of articles) {
         const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
         if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
+        const qte = parseInt(art.quantite, 10);
+        if (isNaN(qte) || qte <= 0) throw new Error('Quantite invalide pour ' + (article.nom || 'article #' + art.article_id) + '.');
 
         if (article.type_article === 'numerote') {
           if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
@@ -119,31 +160,29 @@ router.post('/', authenticate, (req, res) => {
           }
           const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'entree');
           if (overlap) throw new Error('Chevauchement pour ' + article.nom + ' : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
-          recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'entree', ficheId);
+          recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, qte, 'entree', req.params.id);
         }
 
-        insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
-        insertMvt.run(art.article_id, art.quantite, reference, req.user.id, fournisseur_id || null, ficheId, art.numero_debut || null, art.numero_fin || null);
-        updateStock.run(art.quantite, art.article_id);
+        insertLigne.run(req.params.id, art.article_id, qte, art.numero_debut || null, art.numero_fin || null, art.observation || null);
+        insertMvt.run(art.article_id, qte, fiche.reference, req.user.id, fiche.fournisseur_id || null, req.params.id, art.numero_debut || null, art.numero_fin || null);
+        updateStock.run(qte, art.article_id);
       }
-    });
 
+      db.prepare("UPDATE fiches_entree SET validee = 1, statut = 'validee', updated_at = datetime('now','localtime') WHERE id = ?").run(req.params.id);
+    });
     transaction();
   } catch (err) {
-    // Erreur technique (SQLite/disque) : laisser le handler global de server.js la mapper
-    // (FK→400, UNIQUE→409, CHECK→400, sinon 500). 400 reserve aux erreurs metier
-    // (new Error sans code : quantite, article introuvable, chevauchement...).
     if (err.code && err.code.startsWith('SQLITE_')) throw err;
     return res.status(400).json({ error: err.message });
   }
 
-  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(ficheId);
+  const ficheUpdated = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
   const lignes = db.prepare(`
     SELECT fea.*, a.nom as article_nom, a.unite FROM fiche_entree_articles fea
     LEFT JOIN articles a ON fea.article_id = a.id WHERE fea.fiche_id = ?
-  `).all(ficheId);
-  logAudit(db, req.user.id, req.user.username, 'CREER_ENTREE', reference);
-  res.status(201).json({ fiche, lignes, message: 'Entree enregistree (aucune impression).' });
+  `).all(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'VALIDER_ENTREE', fiche.reference || String(req.params.id));
+  res.json({ fiche: ficheUpdated, lignes, message: 'Entree validee et stock mis a jour.' });
 });
 
 // POST /api/entrees/:id/photos — upload photo bon de livraison / facture
@@ -173,6 +212,22 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
+
+  // Brouillon (validee=0) : aucun stock n'a ete ajoute, on supprime sans ajuster le stock
+  // mais en nettoyant les photos sur disque.
+  if (fiche.validee === 0) {
+    db.prepare('DELETE FROM fiches_entree WHERE id = ?').run(req.params.id);
+    logAudit(db, req.user.id, req.user.username, 'SUPPR_ENTREE', (fiche.reference || String(req.params.id)) + ' (brouillon)');
+
+    const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
+    const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+    for (const p of photos) {
+      const full = path.resolve(uploadsDir, String(p.fichier_path).replace(/^\/uploads\//, ''));
+      if (fs.existsSync(full)) { try { fs.unlinkSync(full); } catch (e) { /* deja supprime */ } }
+    }
+
+    return res.json({ message: 'Brouillon supprime (aucun stock ajuste).' });
+  }
 
   const lignes = db.prepare('SELECT * FROM fiche_entree_articles WHERE fiche_id = ?').all(req.params.id);
 

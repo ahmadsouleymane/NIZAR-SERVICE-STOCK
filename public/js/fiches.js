@@ -90,7 +90,8 @@ var Fiches = {
       var statutLabel = f.statut === 'envoyee' ? 'Sortie validée' : (f.statut === 'signee' ? 'OK — Retour reçu' : 'Archivée');
       var statutCls = f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral');
 
-      html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong></td>' +
+      html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong>' +
+        (f.numero_facture ? '<div class="text-sm text-muted">' + UI.escapeHtml(f.numero_facture) + '</div>' : '') + '</td>' +
         '<td>' + UI.formatDate(f.date_envoi || f.date_creation) + '</td>' +
         '<td><strong>' + UI.escapeHtml(f.localite_nom) + '</strong>' + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</td>' +
         '<td><span class="badge ' + statutCls + '">' + statutLabel + '</span></td>' +
@@ -99,7 +100,8 @@ var Fiches = {
         '<td>' + (f.scan_path ? '<span class="badge badge-success">Scanné</span>' : (f.statut === 'envoyee' ? '<span class="badge badge-warning">En attente</span>' : '<span class="text-muted">—</span>')) + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-fiche" data-id="' + f.id + '">Details</button>' +
-        '<button class="btn btn-sm btn-accent btn-dl-pdf" data-id="' + f.id + '">PDF</button>';
+        '<button class="btn btn-sm btn-accent btn-dl-pdf" data-id="' + f.id + '">PDF</button>' +
+        '<button class="btn btn-sm btn-secondary btn-print-fiche" data-id="' + f.id + '">Imprimer</button>';
 
       if (f.statut === 'envoyee') {
         html += '<button class="btn btn-sm btn-success btn-upload-scan" data-id="' + f.id + '">Scanner</button>';
@@ -114,7 +116,7 @@ var Fiches = {
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-ok-retour'].forEach(function(cls) {
+    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-ok-retour', 'btn-print-fiche'].forEach(function(cls) {
       var btns = el.querySelectorAll('.' + cls);
       for (var j = 0; j < btns.length; j++) {
         btns[j].addEventListener('click', function() {
@@ -123,6 +125,7 @@ var Fiches = {
           else if (this.classList.contains('btn-dl-pdf')) self._downloadPDF(id);
           else if (this.classList.contains('btn-upload-scan')) self._uploadScan(id);
           else if (this.classList.contains('btn-ok-retour')) self._okRetour(id);
+          else if (this.classList.contains('btn-print-fiche')) self._imprimerPDF(id);
         });
       }
     });
@@ -257,11 +260,9 @@ var Fiches = {
         modal.close();
         self._load();
 
-        // Proposer telechargement du PDF
-        setTimeout(function() {
-          UI.confirm('Le PDF a ete genere. Voulez-vous le telecharger maintenant ?')
-            .then(function(ok) { if (ok) self._downloadPDF(f.id); });
-        }, 400);
+        // Impression automatique A4 (print bloque tant que la boite est ouverte,
+        // l'archivage API.imprimerFiche se fait apres fermeture) + archivage auto
+        setTimeout(function() { self._imprimerPDF(f.id); }, 600);
       })
       .catch(function(err) { UI.toast(err.message, 'error'); });
   },
@@ -273,6 +274,7 @@ var Fiches = {
 
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral')) + '">' + (f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee')) + '</span></div></div>' +
+        (f.numero_facture ? '<div class="flex-between mb-md"><div><strong>N° facture:</strong> ' + UI.escapeHtml(f.numero_facture) + '</div></div>' : '') +
         '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>' +
         (f.destinataire ? '<div class="flex-between mb-md"><div><strong>Destinataire:</strong> ' + UI.escapeHtml(f.destinataire) + '</div></div>' : '');
 
@@ -305,6 +307,7 @@ var Fiches = {
       if (f.fichier_path) {
         actions.unshift({ label: 'Telecharger PDF', cls: 'btn-accent', callback: function(m) { self._downloadPDF(id); } });
       }
+      actions.unshift({ label: 'Imprimer', cls: 'btn-secondary', callback: function(m) { m.close(); self._imprimerPDF(id); } });
 
       UI.modal('Fiche ' + UI.escapeHtml(f.reference), html, actions);
     }).catch(function(err) { UI.toast(err.message, 'error'); });
@@ -328,6 +331,48 @@ var Fiches = {
         URL.revokeObjectURL(url);
       })
       .catch(function() { UI.toast('Erreur lors du telechargement du PDF.', 'error'); });
+  },
+
+  _imprimerPDF: function(id) {
+    var self = this;
+    var token = API.getToken();
+    fetch('/api/fiches/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(res) {
+        if (!res.ok) throw new Error('Erreur lors de la generation du PDF.');
+        return res.blob();
+      })
+      .then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        var iframe = document.createElement('iframe');
+        iframe.src = url;
+        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
+        document.body.appendChild(iframe);
+
+        var cleaned = false;
+        function cleanup() {
+          if (cleaned) return;
+          cleaned = true;
+          setTimeout(function() {
+            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+            URL.revokeObjectURL(url);
+          }, 200);
+        }
+
+        iframe.onload = function() {
+          // print() bloque tant que la boite d'impression est ouverte : l'archivage
+          // (API.imprimerFiche) s'execute apres sa fermeture — comportement voulu.
+          try { iframe.contentWindow.print(); } catch (e) { /* print indisponible */ }
+          API.imprimerFiche(id)
+            .then(function() { UI.toast('Fiche archivee apres impression.', 'success'); self._load(); })
+            .catch(function(err) { UI.toast(err.message, 'error'); });
+          cleanup();
+        };
+        iframe.onerror = function() {
+          UI.toast('Impossible d imprimer le PDF.', 'error');
+          cleanup();
+        };
+      })
+      .catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
   _uploadScan: function(id) {
