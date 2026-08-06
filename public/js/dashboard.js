@@ -3,6 +3,7 @@ var Dashboard = {
   render: function(container) {
     container.innerHTML = '<div class="kpi-grid" id="kpi-grid">' + UI.renderSkeleton(4) + '</div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Derniers mouvements</h3></div><div id="recent-mvts">' + UI.renderSkeleton(5) + '</div></div>' +
+      '<div class="card"><div class="card-header"><h3 class="card-title">Dernieres entrees fournisseur</h3></div><div id="recent-entrees">' + UI.renderSkeleton(4) + '</div></div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Alertes stock bas</h3></div><div id="top-alertes">' + UI.renderSkeleton(3) + '</div></div>';
 
     API.getDashboard()
@@ -10,6 +11,7 @@ var Dashboard = {
         Dashboard._renderKPI(data.kpi);
         Dashboard._renderMouvements(data.mouvementsRecents);
         Dashboard._renderAlertes(data.topAlertes);
+        Dashboard._renderEntrees(data.entreesRecentes);
       })
       .catch(function(err) {
         container.innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
@@ -54,6 +56,31 @@ var Dashboard = {
         '<td>' + m.quantite + '</td>' +
         '<td>' + UI.escapeHtml(m.motif || '-') + '</td>' +
         '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+  },
+
+  _renderEntrees: function(entrees) {
+    var el = document.getElementById('recent-entrees');
+    if (!el) return;
+    if (!entrees || !entrees.length) {
+      el.innerHTML = UI.renderEmptyState('Aucune entree fournisseur recente');
+      return;
+    }
+
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Reference</th><th>Date</th><th>Fournisseur</th><th>N° BL</th><th>N° facture</th></tr></thead><tbody>';
+
+    for (var i = 0; i < entrees.length; i++) {
+      var e = entrees[i];
+      html += '<tr>' +
+        '<td><strong>' + UI.escapeHtml(e.reference) + '</strong></td>' +
+        '<td>' + UI.formatDate(e.date_entree) + '</td>' +
+        '<td>' + UI.escapeHtml(e.fournisseur_nom || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(e.numero_bl || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(e.numero_facture || '-') + '</td>' +
         '</tr>';
     }
     html += '</tbody></table></div>';
