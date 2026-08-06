@@ -10,6 +10,7 @@
     { id: 'dashboard', label: 'Tableau de bord', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
     { id: 'articles', label: 'Articles', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
     { id: 'fiches', label: 'Fiches reception', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>' },
+    { id: 'entrees', label: 'Entrees', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' },
     { id: 'mouvements', label: 'Envois', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>' },
     { id: 'fournisseurs', label: 'Fournisseurs', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' },
     { id: 'commandes', label: 'Commandes', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>' },
@@ -18,7 +19,7 @@
   ];
 
   // 5 items principaux pour la bottom nav
-  var BOTTOM_ITEMS = ['dashboard', 'articles', 'fiches', 'mouvements'];
+  var BOTTOM_ITEMS = ['dashboard', 'articles', 'fiches', 'entrees', 'mouvements'];
 
   // Construire les navigations
   function buildNav() {
@@ -28,7 +29,7 @@
     // Drawer : tous les items
     var drawerHtml = '';
     drawerHtml += '<div class="drawer-section-label">Principal</div>';
-    var mainIds = ['dashboard', 'articles', 'fiches', 'mouvements'];
+    var mainIds = ['dashboard', 'articles', 'fiches', 'entrees', 'mouvements'];
     for (var i = 0; i < mainIds.length; i++) {
       var item = findItem(mainIds[i]);
       if (item) drawerHtml += '<a href="#' + item.id + '" data-page="' + item.id + '">' + item.icon + '<span>' + item.label + '</span></a>';
@@ -136,6 +137,7 @@
       articles: typeof Articles !== 'undefined' ? Articles : null,
       mouvements: typeof Mouvements !== 'undefined' ? Mouvements : null,
       fiches: typeof Fiches !== 'undefined' ? Fiches : null,
+      entrees: typeof Entrees !== 'undefined' ? Entrees : null,
       fournisseurs: typeof Fournisseurs !== 'undefined' ? Fournisseurs : null,
       commandes: typeof Commandes !== 'undefined' ? Commandes : null,
       rapports: typeof Rapports !== 'undefined' ? Rapports : null,

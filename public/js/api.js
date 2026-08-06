@@ -344,6 +344,46 @@ const API = {
     });
   },
 
+  // Entrees fournisseur
+  async getEntrees(params) {
+    var qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/entrees' + (qs ? '?' + qs : ''));
+  },
+
+  async getEntree(id) {
+    return this.fetch('/api/entrees/' + id);
+  },
+
+  async createEntree(data) {
+    return this.fetch('/api/entrees', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async deleteEntree(id) {
+    return this.fetch('/api/entrees/' + id, {
+      method: 'DELETE'
+    });
+  },
+
+  async uploadEntreePhoto(id, file, type) {
+    var token = this.getToken();
+    var formData = new FormData();
+    formData.append('photo', file);
+    formData.append('type', type);
+    var res = await fetch('/api/entrees/' + id + '/photos', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    return res.json();
+  },
+
+  async getSeriesArticle(article_id) {
+    return this.fetch('/api/series/' + article_id);
+  },
+
   // Import Excel
   async importExcel(file) {
     var token = this.getToken();
