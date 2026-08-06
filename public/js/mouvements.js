@@ -10,9 +10,6 @@ var Mouvements = {
       '<div class="card">' +
       '<div class="card-header">' +
       '<h3 class="card-title">Historique des mouvements</h3>' +
-      '<button class="btn btn-primary" id="btn-add-mvt">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
-      ' Nouveau</button>' +
       '</div>' +
       '<div class="filter-bar">' +
       '<input type="date" class="form-input" id="filtre-debut" value="' + lastMonthStr + '" style="min-width:140px">' +
@@ -34,7 +31,6 @@ var Mouvements = {
 
   _bindEvents: function() {
     var self = this;
-    document.getElementById('btn-add-mvt').addEventListener('click', function() { self._showForm(); });
     document.getElementById('btn-refresh').addEventListener('click', function() { self._loadMouvements(); });
     document.getElementById('filtre-type').addEventListener('change', function() { self._loadMouvements(); });
   },
@@ -91,72 +87,4 @@ var Mouvements = {
     el.innerHTML = html;
   },
 
-  _showForm: function() {
-    var self = this;
-
-    Promise.all([API.getArticles(), API.getFournisseurs()])
-      .then(function(results) {
-        var articles = results[0].articles;
-        var fournisseurs = results[1].fournisseurs;
-
-        var articleOptions = '<option value="">Selectionner un article</option>';
-        for (var i = 0; i < articles.length; i++) {
-          articleOptions += '<option value="' + articles[i].id + '">' + UI.escapeHtml(articles[i].nom) + ' (' + articles[i].stock_actuel + ' ' + UI.escapeHtml(articles[i].unite) + ')</option>';
-        }
-
-        var fournOptions = '<option value="">Aucun</option>';
-        for (var j = 0; j < fournisseurs.length; j++) {
-          fournOptions += '<option value="' + fournisseurs[j].id + '">' + UI.escapeHtml(fournisseurs[j].nom) + '</option>';
-        }
-
-        var formHtml =
-          '<div class="form-group"><label class="form-label">Type *</label><select class="form-select" id="mvt-type"><option value="entree">Entree</option><option value="sortie">Sortie</option></select></div>' +
-          '<div class="form-group"><label class="form-label">Article *</label><select class="form-select" id="mvt-article">' + articleOptions + '</select></div>' +
-          '<div class="form-group"><label class="form-label">Quantite *</label><input type="number" class="form-input" id="mvt-qte" value="1" min="1" required></div>' +
-          '<div class="form-group" id="mvt-motif-group"><label class="form-label">Motif</label>' +
-          '<select class="form-select" id="mvt-motif"><option value="">--</option><option>Distribution au personnel</option><option>Perime/Endommage</option><option>Transfert</option><option>Reception commande</option><option>Inventaire</option><option>Autre</option></select></div>' +
-          '<div class="form-group"><label class="form-label">Demandeur</label><input type="text" class="form-input" id="mvt-demandeur" placeholder="Nom (optionnel)"></div>' +
-          '<div class="form-group"><label class="form-label">Fournisseur</label><select class="form-select" id="mvt-fourn">' + fournOptions + '</select></div>';
-
-        var modal = UI.modal('Nouveau mouvement', formHtml, [
-          { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-          { label: 'Enregistrer', cls: 'btn-primary', callback: function(m) { self._saveMouvement(m); } }
-        ]);
-
-        // Change motif label based on type
-        document.getElementById('mvt-type').addEventListener('change', function() {
-          var motifGroup = document.getElementById('mvt-motif-group').querySelector('.form-label');
-          motifGroup.textContent = this.value === 'entree' ? 'Motif entree' : 'Motif sortie';
-        });
-      })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
-  },
-
-  _saveMouvement: function(modal) {
-    var articleId = parseInt(document.getElementById('mvt-article').value);
-    var type = document.getElementById('mvt-type').value;
-    var qte = parseInt(document.getElementById('mvt-qte').value);
-    var motif = document.getElementById('mvt-motif').value || null;
-    var demandeur = document.getElementById('mvt-demandeur').value.trim() || null;
-    var fournisseurId = document.getElementById('mvt-fourn').value || null;
-
-    if (!articleId) { UI.toast('Selectionnez un article.', 'error'); return; }
-    if (!qte || qte < 1) { UI.toast('Quantite invalide.', 'error'); return; }
-
-    var self = this;
-    API.createMouvement({
-      article_id: articleId,
-      type: type,
-      quantite: qte,
-      motif: motif,
-      demandeur: demandeur,
-      fournisseur_id: fournisseurId
-    })
-      .then(function() {
-        UI.toast('Mouvement enregistre.', 'success');
-        modal.close();
-        self._loadMouvements();
-      })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
-  }
 };

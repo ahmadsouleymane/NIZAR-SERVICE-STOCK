@@ -91,14 +91,16 @@ function generateFichePDF(fiche, lignes) {
     doc.font('Helvetica').fontSize(10);
     doc.text(fiche.reference || '-', MARGIN + 95, infoY, { width: 150 });
     const destFull = fiche.localite_nom +
-      (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National');
+      (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
     doc.text(destFull, MARGIN + 95, infoY + 22, { width: 200 });
 
-    // Colonne droite : Date
+    // Colonne droite : Date + Destinataire
     doc.fontSize(9).font('Helvetica-Bold');
     doc.text('DATE', PAGE_W - MARGIN - 120, infoY);
+    doc.text('DESTINATAIRE', PAGE_W - MARGIN - 120, infoY + 22);
     doc.font('Helvetica').fontSize(10);
     doc.text(formatDate(fiche.date_envoi || fiche.date_creation), PAGE_W - MARGIN - 120, infoY);
+    doc.text(fiche.destinataire || '-', PAGE_W - MARGIN - 120, infoY + 22);
 
     // Notes (si presentes)
     let notesHeight = 0;

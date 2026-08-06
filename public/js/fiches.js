@@ -1,6 +1,8 @@
 // public/js/fiches.js — Fiches de reception avec PDF auto
 var Fiches = {
   _lignes: [],
+  _articleItems: [],
+  _acLignes: [],
 
   render: function(container) {
     container.innerHTML =
@@ -30,12 +32,14 @@ var Fiches = {
     var self = this;
     API.getLocalites().then(function(data) {
       var sel = document.getElementById('fiche-localite');
+      var agences = '<optgroup label="Agences">';
+      var services = '<optgroup label="Services (Siege)">';
       for (var i = 0; i < data.localites.length; i++) {
-        var opt = document.createElement('option');
-        opt.value = data.localites[i].id;
-        opt.textContent = data.localites[i].nom;
-        sel.appendChild(opt);
+        var l = data.localites[i];
+        var opt = '<option value="' + l.id + '">' + UI.escapeHtml(l.nom) + '</option>';
+        if (l.est_service) services += opt; else agences += opt;
       }
+      sel.innerHTML = '<option value="">Toutes destinations</option>' + agences + '</optgroup>' + services + '</optgroup>';
     }).catch(function() {});
   },
 
@@ -65,7 +69,7 @@ var Fiches = {
 
       html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong></td>' +
         '<td>' + UI.formatDate(f.date_envoi || f.date_creation) + '</td>' +
-        '<td><strong>' + UI.escapeHtml(f.localite_nom) + '</strong></td>' +
+        '<td><strong>' + UI.escapeHtml(f.localite_nom) + '</strong>' + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</td>' +
         '<td><span class="badge ' + statutCls + '">' + statutLabel + '</span></td>' +
         '<td>' + (f.nb_lignes || 0) + '</td>' +
         '<td>' + (f.fichier_path ? '<a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
@@ -108,56 +112,83 @@ var Fiches = {
       var articles = results[1].articles;
 
       var locOptions = '<option value="">Choisir la destination...</option>';
+      var agences = '<optgroup label="Agences">';
+      var services = '<optgroup label="Services (Siege)">';
       for (var i = 0; i < localites.length; i++) {
-        locOptions += '<option value="' + localites[i].id + '">' + UI.escapeHtml(localites[i].nom) + (localites[i].type === 'international' ? ' [International]' : '') + '</option>';
+        var loc = localites[i];
+        var opt = '<option value="' + loc.id + '">' + UI.escapeHtml(loc.nom) + (loc.type === 'international' ? ' [International]' : '') + '</option>';
+        if (loc.est_service) services += opt; else agences += opt;
       }
+      locOptions += agences + '</optgroup>' + services + '</optgroup>';
 
-      var articleOptions = '';
-      for (var j = 0; j < articles.length; j++) {
-        var a = articles[j];
-        articleOptions += '<option value="' + a.id + '" data-type="' + a.type_article + '">' + UI.escapeHtml(a.nom) + ' (stock: ' + a.stock_actuel + ' ' + UI.escapeHtml(a.unite) + ')' + (a.type_article === 'numerote' ? ' [NUMEROTE]' : '') + '</option>';
-      }
+      self._articleItems = articles.map(function(a) {
+        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+      });
+      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' }];
+      self._acLignes = [];
 
-      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '' }];
-
-      function renderLignes() {
-        var h = '';
-        for (var k = 0; k < self._lignes.length; k++) {
-          h += '<div class="commande-ligne" style="grid-template-columns:2fr 80px auto auto 32px;gap:4px;align-items:end">' +
-            '<select class="form-select art-envoi" data-idx="' + k + '" style="min-height:40px;font-size:0.85rem"><option value="">Article</option>' + articleOptions + '</select>' +
-            '<input type="number" class="form-input qte-envoi" data-idx="' + k + '" value="' + self._lignes[k].quantite + '" min="1" placeholder="Qte" style="min-height:40px">' +
-            '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (self._lignes[k].numero_debut || '') + '" placeholder="N° debut" style="min-height:40px">' +
-            '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (self._lignes[k].numero_fin || '') + '" placeholder="N° fin" style="min-height:40px">' +
-            '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px">&times;</button>' +
-            '</div>';
-        }
-        return h;
-      }
-
-      var body = '<div class="form-group"><label class="form-label">Destination *</label><select class="form-select" id="envoi-loc">' + locOptions + '</select></div>' +
-        '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="envoi-notes" rows="2" placeholder="Observations..."></textarea></div>' +
+      var body =
+        '<div class="form-group"><label class="form-label">Destination *</label><select class="form-select" id="envoi-loc">' + locOptions + '</select></div>' +
+        '<div class="form-group"><label class="form-label">Destinataire (qui recoit)</label><input type="text" class="form-input" id="envoi-destinataire" placeholder="Nom de la personne / du service..."></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
-        '<div id="lignes-envoi">' + self._renderLignesEnvoi() + '</div>';
+        '<div id="lignes-envoi"></div>';
 
-      var modal = UI.modal('Nouvel envoi', body, [
+      UI.modal('Nouvel envoi', body, [
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
         { label: 'Valider la sortie', cls: 'btn-primary', callback: function(m) { self._saveEnvoi(m); } }
       ]);
 
-      var lc = document.getElementById('lignes-envoi');
       document.getElementById('btn-add-line').addEventListener('click', function() {
-        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '' });
-        lc.innerHTML = self._renderLignesEnvoi();
-        self._bindLignes(lc);
+        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' });
+        self._renderLignesEnvoi();
       });
-      self._bindLignes(lc);
+      self._renderLignesEnvoi();
     }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  _renderLignesEnvoi: function() {
+    var lc = document.getElementById('lignes-envoi');
+    if (!lc) return;
+    var h = '';
+    for (var k = 0; k < this._lignes.length; k++) {
+      var l = this._lignes[k];
+      var showNum = l.article_type === 'numerote' ? 'flex' : 'none';
+      h += '<div class="commande-ligne" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
+        '<div class="art-envoi-ac" data-idx="' + k + '"></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">' +
+        '<input type="number" class="form-input qte-envoi" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px;width:90px">' +
+        '<div class="num-fields" data-idx="' + k + '" style="display:' + showNum + ';gap:6px;flex-wrap:wrap">' +
+        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° debut" style="min-height:40px;width:110px">' +
+        '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px;width:110px">' +
+        '</div>' +
+        '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px">&times;</button>' +
+        '</div></div>';
+    }
+    lc.innerHTML = h;
+    this._bindLignes(lc);
   },
 
   _bindLignes: function(container) {
     var self = this;
-    container.querySelectorAll('.art-envoi').forEach(function(el) {
-      el.addEventListener('change', function() { self._lignes[parseInt(this.dataset.idx)].article_id = this.value; });
+    container.querySelectorAll('.art-envoi-ac').forEach(function(el) {
+      var idx = parseInt(el.dataset.idx);
+      var ac = UI.autocomplete(el, {
+        items: self._articleItems,
+        placeholder: 'Rechercher un article...',
+        onSelect: function(item) {
+          var l = self._lignes[idx];
+          l.article_id = item.id;
+          l.article_type = item.type;
+          var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
+          if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
+        }
+      });
+      self._acLignes[idx] = ac;
+      if (self._lignes[idx] && self._lignes[idx].article_id) {
+        ac.set(self._lignes[idx].article_id);
+        var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
+        if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
+      }
     });
     container.querySelectorAll('.qte-envoi').forEach(function(el) {
       el.addEventListener('input', function() { self._lignes[parseInt(this.dataset.idx)].quantite = parseInt(this.value) || 1; });
@@ -173,17 +204,14 @@ var Fiches = {
         var idx = parseInt(this.dataset.idx);
         if (self._lignes.length <= 1) { UI.toast('Il faut au moins un article.', 'warning'); return; }
         self._lignes.splice(idx, 1);
-        // Re-render the lines container without resetting the form
-        var lc = document.getElementById('lignes-envoi');
-        lc.innerHTML = self._renderLignesEnvoi();
-        self._bindLignes(lc);
+        self._renderLignesEnvoi();
       });
     });
   },
 
   _saveEnvoi: function(modal) {
     var locId = parseInt(document.getElementById('envoi-loc').value);
-    var notes = document.getElementById('envoi-notes').value.trim() || null;
+    var destinataire = document.getElementById('envoi-destinataire').value.trim() || null;
 
     if (!locId) { UI.toast('Choisissez une destination.', 'error'); return; }
 
@@ -195,7 +223,7 @@ var Fiches = {
     }
 
     var self = this;
-    API.createFiche({ localite_id: locId, articles: arts, notes: notes })
+    API.createFiche({ localite_id: locId, articles: arts, destinataire: destinataire })
       .then(function(data) {
         var f = data.fiche;
         UI.toast('Sortie validee — Fiche ' + f.reference + ' creee. PDF genere.', 'success');
@@ -218,7 +246,8 @@ var Fiches = {
 
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral')) + '">' + (f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee')) + '</span></div></div>' +
-        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>';
+        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>' +
+        (f.destinataire ? '<div class="flex-between mb-md"><div><strong>Destinataire:</strong> ' + UI.escapeHtml(f.destinataire) + '</div></div>' : '');
 
       if (f.notes) html += '<p class="mb-md"><strong>Notes:</strong> ' + UI.escapeHtml(f.notes) + '</p>';
 

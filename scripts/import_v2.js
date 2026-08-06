@@ -104,19 +104,22 @@ for (const rows of [f1, f2, f3]) {
 const lastDate = excelDate(lastSerial) || new Date().toISOString().split('T')[0];
 
 // --- Articles (libellés uniques normalisés) ---
+// Les numeros de souche ne concernent QUE les billets et les carnets.
+function isBilletCarnet(name) {
+  const n = name.toLowerCase();
+  return /carnet|billet|voyageur|express|electronique|electro|point de vente|partenaire/.test(n);
+}
 const articleNames = new Map(); // normName -> {quantite:sum, numerote:bool}
 for (const rows of [f1]) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || !r[1]) continue;
     const n = norm(r[1]);
-    if (!articleNames.has(n)) articleNames.set(n, { quantite: 0, numerote: false });
-    const a = articleNames.get(n);
-    a.quantite += parseFloat(r[3]) || 1;
-    if (r[4] && String(r[4]).trim()) a.numerote = true;
+    if (!articleNames.has(n)) articleNames.set(n, { quantite: 0, numerote: isBilletCarnet(n) });
+    articleNames.get(n).quantite += parseFloat(r[3]) || 1;
   }
 }
-// Les carnets de Feuil2/Feuil3 sont numérotés
+// Les carnets de Feuil2/Feuil3 sont des billets/carnets numérotés
 for (const rows of [f2, f3]) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];

@@ -1,7 +1,9 @@
 // public/js/entrees.js — Entrees fournisseur (enregistrement sans impression)
 var Entrees = {
   _lignes: [],
-  _articleOptions: '',
+  _articleItems: [],
+  _acLignes: [],
+  _fournAC: null,
 
   render: function(container) {
     container.innerHTML =
@@ -91,24 +93,17 @@ var Entrees = {
       var fournisseurs = results[0].fournisseurs;
       var articles = results[1].articles;
 
-      var fournOptions = '<option value="">Fournisseur (optionnel)</option>';
-      for (var i = 0; i < fournisseurs.length; i++) {
-        fournOptions += '<option value="' + fournisseurs[i].id + '">' + UI.escapeHtml(fournisseurs[i].nom) + '</option>';
-      }
-
-      var articleOptions = '';
-      for (var j = 0; j < articles.length; j++) {
-        var a = articles[j];
-        articleOptions += '<option value="' + a.id + '" data-type="' + a.type_article + '">' + UI.escapeHtml(a.nom) + ' (stock: ' + a.stock_actuel + ' ' + UI.escapeHtml(a.unite) + ')' + (a.type_article === 'numerote' ? ' [NUMEROTE]' : '') + '</option>';
-      }
-      self._articleOptions = articleOptions;
-      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '' }];
+      self._articleItems = articles.map(function(a) {
+        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+      });
+      self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' }];
+      self._acLignes = [];
+      self._fournAC = null;
 
       var body =
-        '<div class="form-group"><label class="form-label">Fournisseur</label><select class="form-select" id="entree-fourn">' + fournOptions + '</select></div>' +
-        '<div class="form-group"><label class="form-label">N° bon de livraison</label><input type="text" class="form-input" id="entree-bl" placeholder="Ex: BL-2026-001"></div>' +
-        '<div class="form-group"><label class="form-label">N° facture</label><input type="text" class="form-input" id="entree-facture" placeholder="Ex: FAC-2026-001"></div>' +
-        '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="entree-notes" rows="2" placeholder="Observations..."></textarea></div>' +
+        '<div class="form-group"><label class="form-label">Fournisseur (recherche ou ajout)</label><div id="entree-fourn-ac"></div></div>' +
+        '<div class="form-row"><div class="form-group"><label class="form-label">N° bon de livraison</label><input type="text" class="form-input" id="entree-bl" placeholder="Ex: BL-2026-001"></div>' +
+        '<div class="form-group"><label class="form-label">N° facture</label><input type="text" class="form-input" id="entree-facture" placeholder="Ex: FAC-2026-001"></div></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-entree"></div>';
 
@@ -117,8 +112,23 @@ var Entrees = {
         { label: 'Enregistrer', cls: 'btn-primary', callback: function(m) { self._saveEntree(m); } }
       ]);
 
+      self._fournAC = UI.autocomplete(document.getElementById('entree-fourn-ac'), {
+        items: fournisseurs.map(function(f) {
+          return { id: f.id, label: f.nom, meta: (f.telephone || f.contact || '') };
+        }),
+        placeholder: 'Rechercher un fournisseur...',
+        allowAdd: true,
+        onAdd: function(text) {
+          API.createFournisseur({ nom: text }).then(function(data) {
+            var f = data.fournisseur;
+            self._fournAC.set(f.id);
+            UI.toast('Fournisseur cree : ' + f.nom, 'success');
+          }).catch(function(err) { UI.toast(err.message, 'error'); });
+        }
+      });
+
       document.getElementById('btn-add-line').addEventListener('click', function() {
-        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '' });
+        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '' });
         self._refreshLignes();
       });
       self._refreshLignes();
@@ -131,13 +141,17 @@ var Entrees = {
     var h = '';
     for (var k = 0; k < this._lignes.length; k++) {
       var l = this._lignes[k];
-      h += '<div class="commande-ligne" style="grid-template-columns:2fr 80px auto auto 32px;gap:4px;align-items:end">' +
-        '<select class="form-select art-entree" data-idx="' + k + '" style="min-height:40px;font-size:0.85rem"><option value="">Article</option>' + this._articleOptions + '</select>' +
-        '<input type="number" class="form-input qte-entree" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px">' +
-        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° debut" style="min-height:40px">' +
-        '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px">' +
+      var showNum = l.article_type === 'numerote' ? 'flex' : 'none';
+      h += '<div class="commande-ligne" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
+        '<div class="art-ac" data-idx="' + k + '"></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">' +
+        '<input type="number" class="form-input qte-entree" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px;width:90px">' +
+        '<div class="num-fields" data-idx="' + k + '" style="display:' + showNum + ';gap:6px;flex-wrap:wrap">' +
+        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° debut" style="min-height:40px;width:110px">' +
+        '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px;width:110px">' +
+        '</div>' +
         '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px">&times;</button>' +
-        '</div>';
+        '</div></div>';
     }
     lc.innerHTML = h;
     this._bindLignes(lc);
@@ -145,8 +159,26 @@ var Entrees = {
 
   _bindLignes: function(container) {
     var self = this;
-    container.querySelectorAll('.art-entree').forEach(function(el) {
-      el.addEventListener('change', function() { self._lignes[parseInt(this.dataset.idx)].article_id = this.value; });
+    container.querySelectorAll('.art-ac').forEach(function(el) {
+      var idx = parseInt(el.dataset.idx);
+      var ac = UI.autocomplete(el, {
+        items: self._articleItems,
+        placeholder: 'Rechercher un article...',
+        onSelect: function(item) {
+          var l = self._lignes[idx];
+          l.article_id = item.id;
+          l.article_type = item.type;
+          var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
+          if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
+        }
+      });
+      self._acLignes[idx] = ac;
+      // Restaurer l'état après un re-render (ajout/suppression de ligne)
+      if (self._lignes[idx] && self._lignes[idx].article_id) {
+        ac.set(self._lignes[idx].article_id);
+        var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
+        if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
+      }
     });
     container.querySelectorAll('.qte-entree').forEach(function(el) {
       el.addEventListener('input', function() { self._lignes[parseInt(this.dataset.idx)].quantite = parseInt(this.value) || 1; });
@@ -168,10 +200,10 @@ var Entrees = {
   },
 
   _saveEntree: function(modal) {
-    var fournisseurId = document.getElementById('entree-fourn').value || null;
+    var fourn = this._fournAC ? this._fournAC.value() : null;
+    var fournisseurId = fourn ? fourn.id : null;
     var numero_bl = document.getElementById('entree-bl').value.trim() || null;
     var numero_facture = document.getElementById('entree-facture').value.trim() || null;
-    var notes = document.getElementById('entree-notes').value.trim() || null;
 
     var arts = [];
     for (var i = 0; i < this._lignes.length; i++) {
@@ -181,7 +213,7 @@ var Entrees = {
     }
 
     var self = this;
-    API.createEntree({ fournisseur_id: fournisseurId, numero_bl: numero_bl, numero_facture: numero_facture, notes: notes, articles: arts })
+    API.createEntree({ fournisseur_id: fournisseurId, numero_bl: numero_bl, numero_facture: numero_facture, articles: arts })
       .then(function(data) {
         UI.toast(data.message || 'Entree enregistree.', 'success');
         modal.close();

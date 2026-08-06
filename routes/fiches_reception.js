@@ -24,7 +24,7 @@ router.get('/', authenticate, (req, res) => {
   const { statut, localite_id, debut, fin } = req.query;
 
   let query = `
-    SELECT fr.*, l.nom as localite_nom, u.username as cree_par,
+    SELECT fr.*, l.nom as localite_nom, l.est_service as localite_service, u.username as cree_par,
       (SELECT COUNT(*) FROM fiche_reception_articles WHERE fiche_id = fr.id) as nb_lignes
     FROM fiches_reception fr
     LEFT JOIN localites l ON fr.localite_id = l.id
@@ -47,7 +47,7 @@ router.get('/', authenticate, (req, res) => {
 router.get('/:id', authenticate, (req, res) => {
   const db = req.db;
   const fiche = db.prepare(`
-    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, u.username as cree_par
+    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, l.est_service as localite_service, u.username as cree_par
     FROM fiches_reception fr
     LEFT JOIN localites l ON fr.localite_id = l.id
     LEFT JOIN users u ON fr.user_id = u.id
@@ -69,7 +69,7 @@ router.get('/:id', authenticate, (req, res) => {
 // POST /api/fiches — creer un envoi + generer le PDF automatiquement
 router.post('/', authenticate, async (req, res) => {
   const db = req.db;
-  const { localite_id, articles, notes } = req.body;
+  const { localite_id, articles, notes, destinataire } = req.body;
 
   if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
@@ -94,9 +94,9 @@ router.post('/', authenticate, async (req, res) => {
   // Transaction DB
   const transaction = db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, date_envoi)
-      VALUES (?, ?, ?, 'envoyee', ?, datetime('now'))
-    `).run(reference, localite_id, req.user.id, notes || null);
+      INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, destinataire, date_envoi)
+      VALUES (?, ?, ?, 'envoyee', ?, ?, datetime('now'))
+    `).run(reference, localite_id, req.user.id, notes || null, destinataire || null);
 
     ficheId = result.lastInsertRowid;
 
@@ -105,8 +105,8 @@ router.post('/', authenticate, async (req, res) => {
       VALUES (?, ?, ?, ?, ?, ?)
     `);
     const insertMvt = db.prepare(`
-      INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, date)
-      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, datetime('now'))
+      INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, demandeur, date)
+      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, ?, datetime('now'))
     `);
     const updateStock = db.prepare(`
       UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now') WHERE id = ?
@@ -129,7 +129,7 @@ router.post('/', authenticate, async (req, res) => {
       }
 
       insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
-      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId);
+      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, destinataire || null);
       updateStock.run(art.quantite, art.article_id);
     }
   });
@@ -139,7 +139,7 @@ router.post('/', authenticate, async (req, res) => {
 
     // Recuperer la fiche creee avec les infos pour le PDF
     const fiche = db.prepare(`
-      SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays
+      SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, l.est_service as localite_service
       FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
     `).get(ficheId);
 
@@ -185,7 +185,7 @@ router.get('/:id/pdf', authenticate, (req, res) => {
   `).all(req.params.id);
 
   const ficheInfo = db.prepare(`
-    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays
+    SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, l.est_service as localite_service
     FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
 

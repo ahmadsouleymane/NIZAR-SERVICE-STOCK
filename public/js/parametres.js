@@ -13,7 +13,7 @@ var Parametres = {
       '<div id="categories-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Localites (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Localites / Destinations</h3>' +
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Localites / Agences / Services</h3>' +
       '<button class="btn btn-primary btn-sm" id="btn-add-loc">Ajouter une localite</button></div>' +
       '<div id="localites-list">' + UI.renderSkeleton(5) + '</div></div>' : '') +
 
@@ -107,8 +107,8 @@ var Parametres = {
         for (var i = 0; i < data.localites.length; i++) {
           var l = data.localites[i];
           html += '<tr><td><strong>' + UI.escapeHtml(l.nom) + '</strong></td>' +
-            '<td><span class="badge ' + (l.type === 'international' ? 'badge-info' : 'badge-neutral') + '">' + l.type + '</span></td>' +
-            '<td>' + UI.escapeHtml(l.pays) + '</td>' +
+            '<td><span class="badge ' + (l.est_service ? 'badge-success' : (l.type === 'international' ? 'badge-info' : 'badge-neutral')) + '">' + (l.est_service ? 'Service (Siege)' : l.type) + '</span></td>' +
+            '<td>' + (l.est_service ? '—' : UI.escapeHtml(l.pays)) + '</td>' +
             '<td><button class="btn btn-sm btn-danger btn-del-loc" data-id="' + l.id + '">Supprimer</button></td></tr>';
         }
         html += '</tbody></table></div>';
@@ -122,16 +122,18 @@ var Parametres = {
   _showLocaliteForm: function() {
     var self = this;
     var html = '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="loc-nom" required></div>' +
-      '<div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="form-select" id="loc-type"><option value="national">National</option><option value="international">International</option></select></div>' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="form-select" id="loc-type"><option value="national">National</option><option value="international">International</option><option value="service">Service (Siege)</option></select></div>' +
       '<div class="form-group"><label class="form-label">Pays</label><input type="text" class="form-input" id="loc-pays" value="Niger"></div></div>';
 
-    UI.modal('Ajouter une localite', html, [
+    UI.modal('Ajouter une destination', html, [
       { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
       { label: 'Ajouter', cls: 'btn-primary', callback: function(m) {
         var nom = document.getElementById('loc-nom').value.trim();
         if (!nom) { UI.toast('Nom requis.', 'error'); return; }
-        API.createLocalite({ nom: nom, type: document.getElementById('loc-type').value, pays: document.getElementById('loc-pays').value.trim() })
-          .then(function() { UI.toast('Localite ajoutee.', 'success'); m.close(); self._loadLocalites(); })
+        var locType = document.getElementById('loc-type').value;
+        var isService = locType === 'service';
+        API.createLocalite({ nom: nom, type: isService ? 'national' : locType, pays: isService ? 'Niger' : document.getElementById('loc-pays').value.trim(), est_service: isService })
+          .then(function() { UI.toast(isService ? 'Service ajoute.' : 'Localite ajoutee.', 'success'); m.close(); self._loadLocalites(); })
           .catch(function(err) { UI.toast(err.message, 'error'); });
       } }
     ]);

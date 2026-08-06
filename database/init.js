@@ -32,6 +32,7 @@ function initDB(dbPath) {
       nom TEXT UNIQUE NOT NULL,
       type TEXT NOT NULL DEFAULT 'national' CHECK(type IN ('national', 'international')),
       pays TEXT DEFAULT 'Niger',
+      est_service INTEGER NOT NULL DEFAULT 0,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -74,6 +75,7 @@ function initDB(dbPath) {
       user_id INTEGER REFERENCES users(id),
       statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'signee', 'archivee')),
       notes TEXT,
+      destinataire TEXT,
       fichier_path TEXT,
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
@@ -197,6 +199,8 @@ function initDB(dbPath) {
   ensureColumn(db, 'mouvements', 'entree_id', 'INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL');
   ensureColumn(db, 'mouvements', 'numero_debut', 'TEXT');
   ensureColumn(db, 'mouvements', 'numero_fin', 'TEXT');
+  ensureColumn(db, 'localites', 'est_service', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'fiches_reception', 'destinataire', 'TEXT');
 
   // Seeds
   const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
@@ -235,6 +239,16 @@ function initDB(dbPath) {
     ];
     const insertLoc = db.prepare('INSERT INTO localites (nom, type, pays) VALUES (?, ?, ?)');
     for (const l of localites) { insertLoc.run(l.nom, l.type, l.pays); }
+  }
+
+  // Services internes du siege (destinations de sortie internes, idempotent)
+  const services = ['Service Achat', 'Comptabilite', 'Service Commercial', 'Exploitation', 'Ressources Humaines', 'Direction', 'Service Technique', 'Archives'];
+  const findService = db.prepare('SELECT id FROM localites WHERE nom = ?');
+  const markService = db.prepare("UPDATE localites SET est_service = 1, type = 'national', pays = 'Niger' WHERE nom = ?");
+  const insertService = db.prepare("INSERT INTO localites (nom, type, pays, est_service) VALUES (?, 'national', 'Niger', 1)");
+  for (const s of services) {
+    if (findService.get(s)) { markService.run(s); }
+    else { insertService.run(s); }
   }
 
   return db;

@@ -117,6 +117,102 @@ var UI = {
     return modal;
   },
 
+  // Autocompletion (recherche avec suggestions) — articles, fournisseurs, etc.
+  // options: { items:[{id,label,meta}], onSelect(item), onAdd(text), placeholder, allowAdd }
+  // Retourne un controleur : { value() -> item|null, text() -> string, set(id), clear(), destroy() }
+  autocomplete: function(container, options) {
+    var self = this;
+    options = options || {};
+    var items = options.items || [];
+    var selected = null;
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'form-input';
+    input.placeholder = options.placeholder || 'Rechercher...';
+    input.setAttribute('autocomplete', 'off');
+
+    var dropdown = document.createElement('div');
+    dropdown.className = 'ac-dropdown';
+    dropdown.style.cssText = 'position:absolute;top:100%;left:0;right:0;z-index:1000;background:#fff;border:1px solid #e6e8ea;border-radius:8px;max-height:220px;overflow-y:auto;display:none;box-shadow:0 8px 20px rgba(0,0,0,0.12);margin-top:4px;text-align:left';
+
+    var wrapper = document.createElement('div');
+    wrapper.style.cssText = 'position:relative';
+    wrapper.appendChild(input);
+    wrapper.appendChild(dropdown);
+    container.appendChild(wrapper);
+
+    function render(filter) {
+      filter = (filter || '').toLowerCase();
+      var matches = [];
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        if (!filter || (it.label + ' ' + (it.meta || '')).toLowerCase().indexOf(filter) !== -1) matches.push(it);
+        if (matches.length >= 40) break;
+      }
+      var html = '';
+      for (var j = 0; j < matches.length; j++) {
+        var m = matches[j];
+        html += '<div class="ac-item" data-idx="' + j + '" style="padding:9px 12px;cursor:pointer;border-bottom:1px solid #e6e8ea;font-size:0.9rem">' +
+          '<div>' + self.escapeHtml(m.label) + '</div>' +
+          (m.meta ? '<div style="font-size:0.75rem;color:#888">' + self.escapeHtml(m.meta) + '</div>' : '') +
+          '</div>';
+      }
+      if (options.allowAdd && filter) {
+        html += '<div class="ac-add" style="padding:9px 12px;cursor:pointer;font-size:0.9rem;color:#0EA5A0;font-weight:600">+ Creer « ' + self.escapeHtml(filter) + ' »</div>';
+      }
+      if (!matches.length && !options.allowAdd) {
+        html = '<div style="padding:9px 12px;color:#888;font-size:0.85rem">Aucun resultat.</div>';
+      }
+      dropdown.innerHTML = html;
+      dropdown.style.display = 'block';
+      dropdown.querySelectorAll('.ac-item').forEach(function(el) {
+        el.addEventListener('click', function() {
+          var item = matches[parseInt(this.getAttribute('data-idx'))];
+          if (!item) return;
+          selected = item;
+          input.value = item.label;
+          dropdown.style.display = 'none';
+          if (options.onSelect) options.onSelect(item);
+        });
+      });
+      var addEl = dropdown.querySelector('.ac-add');
+      if (addEl) addEl.addEventListener('click', function() {
+        dropdown.style.display = 'none';
+        if (options.onAdd) options.onAdd(filter);
+      });
+    }
+
+    input.addEventListener('input', function() {
+      selected = null;
+      var v = input.value.trim();
+      if (!v) { dropdown.style.display = 'none'; return; }
+      render(v);
+    });
+    input.addEventListener('focus', function() {
+      if (input.value.trim()) render(input.value.trim());
+    });
+    document.addEventListener('click', function outside(e) {
+      if (!wrapper.contains(e.target)) dropdown.style.display = 'none';
+    });
+
+    return {
+      value: function() { return selected; },
+      text: function() { return input.value.trim(); },
+      set: function(id) {
+        for (var i = 0; i < items.length; i++) {
+          if (String(items[i].id) === String(id)) {
+            selected = items[i];
+            input.value = items[i].label;
+            return;
+          }
+        }
+      },
+      clear: function() { selected = null; input.value = ''; },
+      destroy: function() {}
+    };
+  },
+
   // Helpers
   formatDate: function(isoString) {
     if (!isoString) return '-';
