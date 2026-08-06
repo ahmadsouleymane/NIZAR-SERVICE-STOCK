@@ -207,7 +207,7 @@ var Entrees = {
       if (lignes.length) {
         html += '<div class="table-wrapper"><table><thead><tr><th>Article</th><th>Qté</th><th>N° debut</th><th>N° fin</th></tr></thead><tbody>';
         for (var i = 0; i < lignes.length; i++) {
-          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + lignes[i].quantite + '</td><td>' + (lignes[i].numero_debut || '-') + '</td><td>' + (lignes[i].numero_fin || '-') + '</td></tr>';
+          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
         }
         html += '</tbody></table></div>';
       }
