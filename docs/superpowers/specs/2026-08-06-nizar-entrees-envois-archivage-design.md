@@ -54,7 +54,7 @@ Stock manager ── « OK — Retour reçu » ──▶ fiche archivée (badge 
 PDF ré-imprimable à tout moment (historique)
 ```
 
-- Cycle de statut : `envoyee` → `retourne` (OK) → `archivee`.
+- Cycle de statut : `envoyee` → `signee` (OK — retour reçu) → `archivee`.
 - Ré-impression illimitée du PDF, y compris longtemps après l'archivage.
 
 ---
@@ -115,11 +115,11 @@ PDF ré-imprimable à tout moment (historique)
 
 ### 3.2 Modifications de tables existantes
 
-**`mouvements`** : ajouter `numero_debut TEXT` et `numero_fin TEXT` (nullable) — pour conserver les n° de souche dans l'historique des mouvements.
+**`mouvements`** : ajouter `numero_debut TEXT`, `numero_fin TEXT` et `entree_id INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL` (nullable) — pour conserver les n° de souche dans l'historique et rattacher un mouvement d'entrée à sa fiche.
 
-**`fiches_reception`** : étendre le CHECK de `statut` à `('brouillon','envoyee','signee','retourne','archivee')` pour supporter l'étape « OK retour ».
+**`fiches_reception`** : **aucune migration nécessaire** — le statut existant `signee` (déjà dans le CHECK) sert d'étape « OK — retour reçu ». La route `PATCH /statut` est simplement étendue pour l'accepter.
 
-> Migration : SQLite ALTER TABLE ADD COLUMN pour `mouvements` ; la contrainte CHECK de `fiches_reception` est appliquée à la création de la table dans `database/init.js` (aucune migration destructive nécessaire pour un fichier DB existant — le CHECK n'est pas réappliqué rétroactivement par SQLite).
+> Migration : `ALTER TABLE ADD COLUMN` (gardé par `PRAGMA table_info`) pour les colonnes ajoutées sur `mouvements` ; nouvelles tables via `CREATE TABLE IF NOT EXISTS`.
 
 ---
 
@@ -147,8 +147,8 @@ PDF ré-imprimable à tout moment (historique)
 
 ### 4.3 Retour « OK » et archivage
 
-- Action « **OK — Retour reçu** » sur une fiche `envoyee` : statut → `retourne` (badge OK). L'utilisateur peut éventuellement joindre une photo du document signé.
-- L'archivage peut se faire en même temps (statut → `archivee`) ou à part ; une fiche `retourne`/`archivee` est considérée comme clôturée.
+- Action « **OK — Retour reçu** » sur une fiche `envoyee` : statut → `signee` (badge **OK**). L'utilisateur peut éventuellement joindre une photo/scan du document signé (upload existant).
+- L'archivage se fait ensuite via le statut `archivee` ; une fiche `signee`/`archivee` est considérée comme clôturée.
 - **Ré-impression** : le PDF est toujours disponible (`GET /api/fiches/:id/pdf`), servi depuis `fichier_path` s'il existe, sinon régénéré. Aucune limite de ré-impression.
 
 ### 4.4 Retours de carnets (existant, inchangé)
@@ -174,7 +174,7 @@ GET   /api/entrees/:id        → détail (lignes + photos)
 POST  /api/entrees/:id/photos → upload photo { file, type: 'bl'|'facture'|'autre' } (multer, max 10 Mo)
 DELETE /api/entrees/:id       → suppression (admin)
 
-PATCH /api/fiches/:id/retour  → marquer « OK — Retour reçu » (statut → retourne, puis archivee si demandé)
+PATCH /api/fiches/:id/statut → (existant, étendu) accepte désormais `signee` pour marquer « OK — Retour reçu »
 GET   /api/fiches/:id/pdf     → (existant) téléchargement/ré-impression du PDF
 
 GET   /api/series/:article_id → (nouveau, admin/assistant) historique des plages de numéros d'un article
@@ -197,9 +197,9 @@ GET   /api/series/:article_id → (nouveau, admin/assistant) historique des plag
 
 ### 7.2 Page « Fiches » (existant, ajustée)
 
-- Sur une fiche `envoyee` : bouton **« OK — Retour reçu »** → statut `retourne` → badge **OK**.
+- Sur une fiche `envoyee` : bouton **« OK — Retour reçu »** → statut `signee` → badge **OK**.
 - Le PDF reste téléchargeable/ré-imprimable sur toutes les fiches (envoyée, OK, archivée).
-- Affichage du cycle de statut : `envoyee` → `retourne` (OK) → `archivee`.
+- Affichage du cycle de statut : `envoyee` → `signee` (OK) → `archivee`.
 
 ### 7.3 Navigation et dashboard
 
@@ -243,7 +243,7 @@ GET   /api/series/:article_id → (nouveau, admin/assistant) historique des plag
 4. Tentative d'entrée avec une plage déjà enregistrée → refus (chevauchement).
 5. Upload d'une photo de facture sur l'entrée → visible dans le détail.
 6. Créer un envoi vers une agence → PDF généré, stock diminue, statut `envoyee`.
-7. Action « OK — Retour reçu » → statut `retourne` (badge OK), puis `archivee`.
+7. Action « OK — Retour reçu » → statut `signee` (badge OK), puis `archivee`.
 8. Ré-impression du PDF de la fiche archivée → téléchargement OK.
 9. Tableau de bord : les entrées/sorties du jour et l'état du stock sont à jour.
 
