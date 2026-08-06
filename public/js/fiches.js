@@ -80,7 +80,7 @@ var Fiches = {
 
   _renderTable: function(fiches) {
     var el = document.getElementById('fiches-table');
-    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune fiche', 'Creer un envoi', 'fiches'); return; }
+    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune fiche', 'Créer un envoi', 'btn-new-envoi'); return; }
 
     var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr><th>Référence</th><th>Date</th><th>Destination</th><th>Statut</th><th>Lignes</th><th>PDF</th><th>Scan</th><th>Actions</th></tr></thead><tbody>';
@@ -253,18 +253,36 @@ var Fiches = {
     }
 
     var self = this;
+
+    // Pre-ouvrir la fenetre d'impression pendant le geste utilisateur (anti-bloqueur de popup) :
+    // on la redirigera vers la fiche creee une fois la creation terminee.
+    var printWin = window.open('', '_blank');
+    if (printWin) {
+      printWin.document.write('<html><body style="font-family:sans-serif;color:#6B7280;padding:40px;text-align:center">Création de la fiche…</body></html>');
+    }
+
     API.createFiche({ localite_id: locId, articles: arts, destinataire: destinataire })
       .then(function(data) {
         var f = data.fiche;
-        UI.toast('Sortie validee — Fiche ' + f.reference + ' creee. PDF genere.', 'success');
+        UI.toast('Sortie validée — Fiche ' + f.reference + ' créée. PDF généré.', 'success');
         modal.close();
         self._load();
 
-        // Impression automatique A4 (print bloque tant que la boite est ouverte,
-        // l'archivage API.imprimerFiche se fait apres fermeture) + archivage auto
-        setTimeout(function() { self._imprimerPDF(f.id); }, 600);
+        // Impression automatique A4 (la boite d'impression s'ouvre dans la nouvelle fenetre)
+        // + archivage automatique d'une copie
+        if (printWin) {
+          printWin.location.href = '/imprimer.html?id=' + f.id;
+        } else {
+          self._imprimerPDF(f.id);
+        }
+        API.imprimerFiche(f.id)
+          .then(function() { /* archivé */ })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
       })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
+      .catch(function(err) {
+        if (printWin) { try { printWin.close(); } catch (e) {} }
+        UI.toast(err.message, 'error');
+      });
   },
 
   _viewFiche: function(id) {
@@ -333,57 +351,20 @@ var Fiches = {
       .catch(function() { UI.toast('Erreur lors du telechargement du PDF.', 'error'); });
   },
 
+  // Ouvre la vue d'impression A4 (imprimer.html) dans une nouvelle fenetre : la boite
+  // d'impression s'ouvre automatiquement. Archive ensuite une copie dans le systeme.
   _imprimerPDF: function(id) {
     var self = this;
-    var token = API.getToken();
-    fetch('/api/fiches/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } })
-      .then(function(res) {
-        if (!res.ok) throw new Error('Erreur lors de la generation du PDF.');
-        return res.blob();
-      })
-      .then(function(blob) {
-        var url = URL.createObjectURL(blob);
-        var iframe = document.createElement('iframe');
-        iframe.src = url;
-        iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0';
-        document.body.appendChild(iframe);
-
-        var cleaned = false;
-        function cleanup() {
-          if (cleaned) return;
-          cleaned = true;
-          setTimeout(function() {
-            if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-            URL.revokeObjectURL(url);
-          }, 200);
-        }
-
-        iframe.onload = function() {
-          // print() bloque tant que la boite d'impression est ouverte : l'archivage
-          // (API.imprimerFiche) s'execute apres sa fermeture — comportement voulu.
-          try { iframe.contentWindow.print(); } catch (e) { /* print indisponible */ }
-          API.imprimerFiche(id)
-            .then(function() { UI.toast('Fiche archivee apres impression.', 'success'); self._load(); })
-            .catch(function(err) { UI.toast(err.message, 'error'); });
-          cleanup();
-        };
-        iframe.onerror = function() {
-          UI.toast('Impossible d imprimer le PDF.', 'error');
-          cleanup();
-        };
-      })
+    var w = window.open('/imprimer.html?id=' + id, '_blank');
+    if (!w) { UI.toast('Autorisez les popups pour imprimer la fiche.', 'error'); }
+    API.imprimerFiche(id)
+      .then(function() { UI.toast('Fiche imprimée et archivée.', 'success'); self._load(); })
       .catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
   _uploadScan: function(id) {
     var self = this;
-    var input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,.pdf';
-    input.capture = 'environment';
-
-    input.addEventListener('change', function() {
-      var file = this.files[0];
+    UI.pickFile(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -393,8 +374,7 @@ var Fiches = {
         UI.toast('Scan uploade. Fiche archivee.', 'success');
         self._load();
       }).catch(function(err) { UI.toast(err.message, 'error'); });
-    });
-    input.click();
+    }, 'image/*,.pdf');
   },
 
   _archiveFiche: function(id) {

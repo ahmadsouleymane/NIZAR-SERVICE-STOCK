@@ -213,19 +213,22 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
 
-  // Brouillon (validee=0) : aucun stock n'a ete ajoute, on supprime sans ajuster le stock
-  // mais en nettoyant les photos sur disque.
-  if (fiche.validee === 0) {
-    db.prepare('DELETE FROM fiches_entree WHERE id = ?').run(req.params.id);
-    logAudit(db, req.user.id, req.user.username, 'SUPPR_ENTREE', (fiche.reference || String(req.params.id)) + ' (brouillon)');
-
-    const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
-    const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  // Recuperer les photos AVANT la suppression : la fiche les supprime en cascade en base,
+  // il faut donc lister les chemins avant pour pouvoir les nettoyer sur disque.
+  const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
+  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  const removePhotos = function() {
     for (const p of photos) {
       const full = path.resolve(uploadsDir, String(p.fichier_path).replace(/^\/uploads\//, ''));
       if (fs.existsSync(full)) { try { fs.unlinkSync(full); } catch (e) { /* deja supprime */ } }
     }
+  };
 
+  // Brouillon (validee=0) : aucun stock n'a ete ajoute, on supprime sans ajuster le stock
+  if (fiche.validee === 0) {
+    db.prepare('DELETE FROM fiches_entree WHERE id = ?').run(req.params.id);
+    logAudit(db, req.user.id, req.user.username, 'SUPPR_ENTREE', (fiche.reference || String(req.params.id)) + ' (brouillon)');
+    removePhotos();
     return res.json({ message: 'Brouillon supprime (aucun stock ajuste).' });
   }
 
@@ -256,14 +259,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   });
   transaction();
   logAudit(db, req.user.id, req.user.username, 'SUPPR_ENTREE', fiche.reference || String(req.params.id));
-
-  // Nettoyer les photos (bon de livraison / facture) sur disque pour eviter les orphelins
-  const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
-  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
-  for (const p of photos) {
-    const full = path.resolve(uploadsDir, String(p.fichier_path).replace(/^\/uploads\//, ''));
-    if (fs.existsSync(full)) { try { fs.unlinkSync(full); } catch (e) { /* deja supprime */ } }
-  }
+  removePhotos();
 
   res.json({ message: 'Entree supprimee (stock ajuste).' });
 });

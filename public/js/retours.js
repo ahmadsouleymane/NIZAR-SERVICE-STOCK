@@ -45,7 +45,7 @@ var Retours = {
 
   _renderTable: function(retours) {
     var el = document.getElementById('retours-table');
-    if (!retours || !retours.length) { el.innerHTML = UI.renderEmptyState('Aucun retour de carnet', 'Enregistrer un retour', '#'); return; }
+    if (!retours || !retours.length) { el.innerHTML = UI.renderEmptyState('Aucun retour de carnet', 'Enregistrer un retour', 'btn-new-retour'); return; }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
       '<th>Date</th><th>Article</th><th>Agence</th><th>Type</th><th>Qte</th><th>N° debut</th><th>N° fin</th><th>Motif</th><th>Saisi par</th>' +

@@ -73,7 +73,7 @@ var Articles = {
   _renderTable: function(articles) {
     var el = document.getElementById('articles-table');
     if (!articles || !articles.length) {
-      el.innerHTML = UI.renderEmptyState('Aucun article trouve', 'Ajouter un article', '#articles');
+      el.innerHTML = UI.renderEmptyState('Aucun article trouve', 'Ajouter un article', 'btn-add-article');
       return;
     }
 

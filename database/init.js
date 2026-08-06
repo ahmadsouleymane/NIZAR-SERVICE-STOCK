@@ -242,13 +242,15 @@ function initDB(dbPath) {
     )
   `);
 
-  // Seeds
-  const adminCount = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?').get('admin');
-  if (adminCount.count === 0) {
-    const adminHash = bcrypt.hashSync('admin123', 10);
-    const assistantHash = bcrypt.hashSync('assistant123', 10);
-    db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('admin', adminHash, 'admin');
-    db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)').run('assistant', assistantHash, 'assistant');
+  // Seeds — idempotents par utilisateur (un compte renomme/supprime ne doit pas
+  // faire recraser les autres ni faire planter le demarrage).
+  const ensureUser = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?');
+  const insertUser = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)');
+  if (ensureUser.get('admin').count === 0) {
+    insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'admin');
+  }
+  if (ensureUser.get('assistant').count === 0) {
+    insertUser.run('assistant', bcrypt.hashSync('assistant123', 10), 'assistant');
   }
 
   const catCount = db.prepare('SELECT COUNT(*) as count FROM categories').get();

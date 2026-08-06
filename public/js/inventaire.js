@@ -29,7 +29,7 @@ var Inventaire = {
 
   _renderTable: function(inventaires) {
     var el = document.getElementById('inventaire-table');
-    if (!inventaires || !inventaires.length) { el.innerHTML = UI.renderEmptyState('Aucun comptage effectue', 'Nouveau comptage', '#'); return; }
+    if (!inventaires || !inventaires.length) { el.innerHTML = UI.renderEmptyState('Aucun comptage effectue', 'Nouveau comptage', 'btn-new-inventaire'); return; }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
       '<th>Date</th><th>Article</th><th>Stock theorique</th><th>Compte</th><th>Ecart</th><th>Notes</th><th>Par</th>' +

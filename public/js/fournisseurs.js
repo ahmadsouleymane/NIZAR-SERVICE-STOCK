@@ -29,7 +29,7 @@ var Fournisseurs = {
   _renderList: function(fournisseurs) {
     var el = document.getElementById('fournisseurs-list');
     if (!fournisseurs || !fournisseurs.length) {
-      el.innerHTML = UI.renderEmptyState('Aucun fournisseur', 'Ajouter un fournisseur', '#');
+      el.innerHTML = UI.renderEmptyState('Aucun fournisseur', 'Ajouter un fournisseur', 'btn-add-fourn');
       return;
     }
 

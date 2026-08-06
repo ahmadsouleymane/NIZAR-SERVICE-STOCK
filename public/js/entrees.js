@@ -70,7 +70,7 @@ var Entrees = {
 
   _renderTable: function(fiches) {
     var el = document.getElementById('entrees-table');
-    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune entree', 'Enregistrer une entree', 'entrees'); return; }
+    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune entrée', 'Enregistrer une entrée', 'btn-new-entree'); return; }
 
     var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr>' +
@@ -336,13 +336,8 @@ var Entrees = {
 
   _pickPhoto: function(type, label) {
     var self = this;
-    var input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,.pdf';
-    input.capture = 'environment';
-
-    input.addEventListener('change', function() {
-      var file = this.files[0];
+    // Ouvre directement la camera du telephone (input capture), sinon le selecteur de fichier
+    UI.pickFile(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -356,7 +351,6 @@ var Entrees = {
       }
       self._refreshValiderBtn();
     });
-    input.click();
   },
 
   // Active/desactive le bouton « Valider » selon la presence des deux photos
@@ -429,13 +423,7 @@ var Entrees = {
 
   _addPhoto: function(id) {
     var self = this;
-    var input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,.pdf';
-    input.capture = 'environment';
-
-    input.addEventListener('change', function() {
-      var file = this.files[0];
+    UI.pickFile(function(file) {
       if (!file) return;
       if (file.size > 10 * 1024 * 1024) { UI.toast('Fichier trop volumineux (max 10 Mo).', 'error'); return; }
 
@@ -453,8 +441,7 @@ var Entrees = {
         { label: 'Facture / Autre', cls: 'btn-secondary', callback: function(m) { m.close(); upload('facture'); } },
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } }
       ]);
-    });
-    input.click();
+    }, 'image/*,.pdf');
   },
 
   _deleteEntree: function(id) {

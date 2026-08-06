@@ -269,6 +269,30 @@ var UI = {
     };
   },
 
+  // Ouvre la camera du telephone (capture) ou le selecteur de fichier, puis renvoie le fichier.
+  // L'input est rattache au DOM avant le .click() : indispensable sur iOS Safari/standalone.
+  pickFile: function(onChange, accept, capture) {
+    accept = accept || 'image/*';
+    capture = capture !== false;
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = accept;
+    if (capture) input.setAttribute('capture', 'environment');
+    input.style.position = 'fixed';
+    input.style.left = '0';
+    input.style.top = '0';
+    input.style.width = '1px';
+    input.style.height = '1px';
+    input.style.opacity = '0';
+    input.style.pointerEvents = 'none';
+    document.body.appendChild(input);
+    input.addEventListener('change', function() {
+      if (input.parentNode) input.parentNode.removeChild(input);
+      if (onChange) onChange(this.files && this.files[0]);
+    });
+    input.click();
+  },
+
   // Helpers
   formatDate: function(isoString) {
     if (!isoString) return '-';
@@ -335,15 +359,31 @@ var UI = {
       }
     });
     this._respObserver.observe(document.body, { childList: true, subtree: true });
+
+    // Clic sur un bouton d'état vide (empty-action) : declenche l'action reelle de la page
+    if (!this._emptyActionBound) {
+      this._emptyActionBound = true;
+      document.addEventListener('click', function(e) {
+        var t = e.target && e.target.closest ? e.target.closest('.empty-action') : null;
+        if (t && t.dataset.target) {
+          var btn = document.getElementById(t.dataset.target);
+          if (btn && btn.click) btn.click();
+        }
+      });
+    }
   },
 
-  renderEmptyState: function(msg, actionLabel, actionHash) {
+  renderEmptyState: function(msg, actionLabel, actionTarget) {
     var html = '<div class="empty-state">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>' +
       '<h3>' + UI.escapeHtml(msg) + '</h3>';
     if (actionLabel) {
-      if (actionHash && actionHash !== '#') {
-        html += '<a href="#' + actionHash + '" class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</a>';
+      if (actionTarget && actionTarget.charAt(0) === '#') {
+        // Lien vers une autre page
+        html += '<a href="' + actionTarget + '" class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</a>';
+      } else if (actionTarget) {
+        // Bouton qui declenche l'action reelle de la page (id du bouton principal)
+        html += '<button type="button" class="btn btn-primary empty-action" data-target="' + UI.escapeHtml(actionTarget) + '" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</button>';
       } else {
         html += '<span class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</span>';
       }

@@ -70,7 +70,7 @@ var Commandes = {
   _renderTable: function(commandes) {
     var el = document.getElementById('commandes-table');
     if (!commandes || !commandes.length) {
-      el.innerHTML = UI.renderEmptyState('Aucune commande', 'Nouvelle commande', '#');
+      el.innerHTML = UI.renderEmptyState('Aucune commande', 'Nouvelle commande', 'btn-add-cmd');
       return;
     }
 
