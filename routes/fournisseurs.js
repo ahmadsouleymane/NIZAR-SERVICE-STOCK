@@ -16,8 +16,8 @@ router.get('/', authenticate, (req, res) => {
   res.json({ fournisseurs });
 });
 
-// POST /api/fournisseurs
-router.post('/', authenticate, (req, res) => {
+// POST /api/fournisseurs (admin only)
+router.post('/', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const { nom, contact, telephone, email, adresse, delai_moyen_j } = req.body;
   if (!nom) return res.status(400).json({ error: 'Nom requis.' });

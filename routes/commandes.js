@@ -39,6 +39,20 @@ router.post('/', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Au moins une ligne requise.' });
   }
 
+  // Verifier que le fournisseur existe
+  const fournisseur = db.prepare('SELECT id FROM fournisseurs WHERE id = ?').get(fournisseur_id);
+  if (!fournisseur) return res.status(400).json({ error: 'Fournisseur introuvable.' });
+
+  // Valider les lignes
+  for (let i = 0; i < lignes.length; i++) {
+    const ligne = lignes[i];
+    if (!ligne.article_id) return res.status(400).json({ error: 'Article requis pour la ligne ' + (i + 1) + '.' });
+    const qte = parseInt(ligne.quantite, 10);
+    if (isNaN(qte) || qte <= 0) return res.status(400).json({ error: 'Quantite invalide pour la ligne ' + (i + 1) + ' (doit etre > 0).' });
+    const article = db.prepare('SELECT id FROM articles WHERE id = ?').get(ligne.article_id);
+    if (!article) return res.status(400).json({ error: 'Article #' + ligne.article_id + ' introuvable (ligne ' + (i + 1) + ').' });
+  }
+
   const insertCommande = db.prepare(`
     INSERT INTO commandes (fournisseur_id, statut, notes, date_commande)
     VALUES (?, 'brouillon', ?, datetime('now'))
@@ -53,7 +67,7 @@ router.post('/', authenticate, (req, res) => {
     const commandeId = result.lastInsertRowid;
 
     for (const ligne of lignes) {
-      insertLigne.run(commandeId, ligne.article_id, ligne.quantite || 1, ligne.prix_unitaire || 0);
+      insertLigne.run(commandeId, ligne.article_id, parseInt(ligne.quantite, 10) || 1, ligne.prix_unitaire || 0);
     }
 
     return commandeId;
@@ -134,6 +148,16 @@ router.patch('/:id/statut', authenticate, (req, res) => {
 
   const commande = db.prepare('SELECT * FROM commandes WHERE id = ?').get(req.params.id);
   if (!commande) return res.status(404).json({ error: 'Commande introuvable.' });
+
+  // Empecher de re-jouer une reception deja faite
+  if (statut === 'recue' && commande.statut === 'recue') {
+    return res.status(400).json({ error: 'Cette commande est deja recue.' });
+  }
+
+  // Empecher de recevoir une commande annulee
+  if (statut === 'recue' && commande.statut === 'annulee') {
+    return res.status(400).json({ error: 'Impossible de recevoir une commande annulee.' });
+  }
 
   const transaction = db.transaction(() => {
     if (statut === 'recue') {

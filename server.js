@@ -49,6 +49,35 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Gestionnaire d'erreurs global — transforme les erreurs SQLite et autres en JSON
+app.use((err, req, res, next) => {
+  // Erreur Multer (fichier trop volumineux, etc.)
+  if (err.code === 'LIMIT_FILE_SIZE') {
+    return res.status(400).json({ error: 'Fichier trop volumineux (max 10 Mo).' });
+  }
+  if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+    return res.status(400).json({ error: 'Champ de fichier inattendu.' });
+  }
+
+  // Erreurs SQLite (contrainte FK, CHECK, UNIQUE)
+  if (err.message && err.message.includes('SQLITE_')) {
+    if (err.message.includes('FOREIGN KEY')) {
+      return res.status(400).json({ error: 'Reference invalide : element lie introuvable.' });
+    }
+    if (err.message.includes('UNIQUE constraint')) {
+      return res.status(409).json({ error: 'Cet element existe deja (doublon).' });
+    }
+    if (err.message.includes('CHECK constraint')) {
+      return res.status(400).json({ error: 'Valeur non autorisee pour ce champ.' });
+    }
+    console.error('Erreur SQLite:', err.message);
+    return res.status(500).json({ error: 'Erreur interne de base de donnees.' });
+  }
+
+  console.error('Erreur serveur:', err.message, err.stack);
+  res.status(500).json({ error: 'Erreur interne du serveur.' });
+});
+
 app.listen(PORT, () => {
   console.log('Nizar Stock - Serveur demarre sur http://localhost:' + PORT);
   console.log('Comptes: admin/admin123, assistant/assistant123');

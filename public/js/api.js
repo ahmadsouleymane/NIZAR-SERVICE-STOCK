@@ -80,6 +80,13 @@ const API = {
     this.clearToken();
   },
 
+  async changePassword(current_password, new_password) {
+    return this.fetch('/api/users/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ current_password, new_password })
+    });
+  },
+
   // Dashboard
   async getDashboard() {
     return this.fetch('/api/dashboard');

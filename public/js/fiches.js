@@ -132,7 +132,7 @@ var Fiches = {
       var body = '<div class="form-group"><label class="form-label">Destination *</label><select class="form-select" id="envoi-loc">' + locOptions + '</select></div>' +
         '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="envoi-notes" rows="2" placeholder="Observations..."></textarea></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
-        '<div id="lignes-envoi">' + renderLignes() + '</div>';
+        '<div id="lignes-envoi">' + self._renderLignesEnvoi() + '</div>';
 
       var modal = UI.modal('Nouvel envoi', body, [
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
@@ -142,7 +142,7 @@ var Fiches = {
       var lc = document.getElementById('lignes-envoi');
       document.getElementById('btn-add-line').addEventListener('click', function() {
         self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '' });
-        lc.innerHTML = renderLignes();
+        lc.innerHTML = self._renderLignesEnvoi();
         self._bindLignes(lc);
       });
       self._bindLignes(lc);
@@ -168,10 +168,10 @@ var Fiches = {
         var idx = parseInt(this.dataset.idx);
         if (self._lignes.length <= 1) { UI.toast('Il faut au moins un article.', 'warning'); return; }
         self._lignes.splice(idx, 1);
-        container.innerHTML = '';
-        // Rebuild — on simplifie en fermant et re-ouvrant
-        document.querySelector('.modal-overlay').style.display = 'none';
-        self._showEnvoiForm();
+        // Re-render the lines container without resetting the form
+        var lc = document.getElementById('lignes-envoi');
+        lc.innerHTML = self._renderLignesEnvoi();
+        self._bindLignes(lc);
       });
     });
   },

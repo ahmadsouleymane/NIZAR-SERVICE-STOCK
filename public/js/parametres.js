@@ -31,8 +31,10 @@ var Parametres = {
 
       // Preferences
       '<div class="card"><div class="card-header"><h3 class="card-title">Preferences</h3></div>' +
+      '<div class="form-group"><label class="form-label">Mot de passe actuel</label>' +
+      '<input type="password" class="form-input" id="current-password" placeholder="Votre mot de passe actuel" style="max-width:350px"></div>' +
       '<div class="form-group"><label class="form-label">Nouveau mot de passe</label>' +
-      '<input type="password" class="form-input" id="new-password" placeholder="Laisser vide pour ne pas changer" style="max-width:350px"></div>' +
+      '<input type="password" class="form-input" id="new-password" placeholder="Min. 4 caracteres" style="max-width:350px"></div>' +
       '<button class="btn btn-primary" id="btn-change-password">Changer le mot de passe</button>' +
       '</div>';
 
@@ -231,12 +233,18 @@ var Parametres = {
 
   // === Preferences ===
   _changePassword: function() {
-    var password = document.getElementById('new-password').value;
-    if (!password) { UI.toast('Entrez un nouveau mot de passe.', 'error'); return; }
-    if (password.length < 4) { UI.toast('4 caracteres minimum.', 'error'); return; }
+    var currentPassword = document.getElementById('current-password').value;
+    var newPassword = document.getElementById('new-password').value;
+    if (!currentPassword) { UI.toast('Entrez votre mot de passe actuel.', 'error'); return; }
+    if (!newPassword) { UI.toast('Entrez un nouveau mot de passe.', 'error'); return; }
+    if (newPassword.length < 4) { UI.toast('4 caracteres minimum.', 'error'); return; }
     var self = this;
-    API.updateUser(this._user.id, { password: password })
-      .then(function() { UI.toast('Mot de passe modifie.', 'success'); document.getElementById('new-password').value = ''; })
+    API.changePassword(currentPassword, newPassword)
+      .then(function() {
+        UI.toast('Mot de passe modifie avec succes.', 'success');
+        document.getElementById('current-password').value = '';
+        document.getElementById('new-password').value = '';
+      })
       .catch(function(err) { UI.toast(err.message, 'error'); });
   }
 };

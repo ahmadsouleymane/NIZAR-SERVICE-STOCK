@@ -74,4 +74,29 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   res.json({ message: 'Utilisateur supprime.' });
 });
 
+// PATCH /api/users/me/password — changer son propre mot de passe
+router.patch('/me/password', authenticate, (req, res) => {
+  const db = req.db;
+  const { current_password, new_password } = req.body;
+
+  if (!current_password || !new_password) {
+    return res.status(400).json({ error: 'Mot de passe actuel et nouveau mot de passe requis.' });
+  }
+
+  if (new_password.length < 4) {
+    return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 4 caracteres.' });
+  }
+
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  if (!user) return res.status(404).json({ error: 'Utilisateur introuvable.' });
+
+  const valid = bcrypt.compareSync(current_password, user.password);
+  if (!valid) return res.status(400).json({ error: 'Mot de passe actuel incorrect.' });
+
+  const hash = bcrypt.hashSync(new_password, 10);
+  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.user.id);
+
+  res.json({ message: 'Mot de passe modifie avec succes.' });
+});
+
 module.exports = router;

@@ -59,35 +59,48 @@ router.post('/', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Type doit etre entree ou sortie.' });
   }
 
+  const qte = parseInt(quantite, 10);
+  if (isNaN(qte) || qte <= 0) {
+    return res.status(400).json({ error: 'La quantite doit etre un nombre positif.' });
+  }
+
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(article_id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
 
   // Verifier stock suffisant pour les sorties
-  if (type === 'sortie' && article.stock_actuel < quantite) {
+  if (type === 'sortie' && article.stock_actuel < qte) {
     return res.status(400).json({
       error: 'Stock insuffisant. Stock actuel : ' + article.stock_actuel + ' ' + article.unite
     });
   }
 
-  // Inserer le mouvement
-  const result = db.prepare(`
-    INSERT INTO mouvements (article_id, type, quantite, motif, demandeur, user_id, fournisseur_id, date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-  `).run(article_id, type, quantite, motif || null, demandeur || null, req.user.id, fournisseur_id || null);
+  // Verifier le fournisseur si fourni
+  if (fournisseur_id) {
+    const fournisseur = db.prepare('SELECT id FROM fournisseurs WHERE id = ?').get(fournisseur_id);
+    if (!fournisseur) return res.status(400).json({ error: 'Fournisseur introuvable.' });
+  }
 
-  // Mettre a jour le stock
-  const delta = type === 'entree' ? quantite : -quantite;
-  db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\') WHERE id = ?')
-    .run(delta, article_id);
+  let mouvement = null;
+  const transaction = db.transaction(() => {
+    const result = db.prepare(`
+      INSERT INTO mouvements (article_id, type, quantite, motif, demandeur, user_id, fournisseur_id, date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `).run(article_id, type, qte, motif || null, demandeur || null, req.user.id, fournisseur_id || null);
 
-  const mouvement = db.prepare(`
-    SELECT m.*, a.nom as article_nom, u.username
-    FROM mouvements m
-    LEFT JOIN articles a ON m.article_id = a.id
-    LEFT JOIN users u ON m.user_id = u.id
-    WHERE m.id = ?
-  `).get(result.lastInsertRowid);
+    const delta = type === 'entree' ? qte : -qte;
+    db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\') WHERE id = ?')
+      .run(delta, article_id);
 
+    mouvement = db.prepare(`
+      SELECT m.*, a.nom as article_nom, u.username
+      FROM mouvements m
+      LEFT JOIN articles a ON m.article_id = a.id
+      LEFT JOIN users u ON m.user_id = u.id
+      WHERE m.id = ?
+    `).get(result.lastInsertRowid);
+  });
+
+  transaction();
   res.status(201).json({ mouvement });
 });
 

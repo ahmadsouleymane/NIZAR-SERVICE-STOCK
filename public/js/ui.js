@@ -142,7 +142,13 @@ var UI = {
     var html = '<div class="empty-state">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/></svg>' +
       '<h3>' + UI.escapeHtml(msg) + '</h3>';
-    if (actionLabel) html += '<a href="#' + (actionHash || '') + '" class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</a>';
+    if (actionLabel) {
+      if (actionHash && actionHash !== '#') {
+        html += '<a href="#' + actionHash + '" class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</a>';
+      } else {
+        html += '<span class="btn btn-primary" style="margin-top:0.5rem">' + UI.escapeHtml(actionLabel) + '</span>';
+      }
+    }
     html += '</div>';
     return html;
   },

@@ -3,7 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { generateFichePDF } = require('../services/pdf');
 const router = express.Router();
 
@@ -81,6 +81,20 @@ router.post('/', authenticate, async (req, res) => {
 
   if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
+
+  // Verifier que la localite existe
+  const localite = db.prepare('SELECT id FROM localites WHERE id = ?').get(localite_id);
+  if (!localite) return res.status(400).json({ error: 'Destination introuvable.' });
+
+  // Valider les articles
+  for (let i = 0; i < articles.length; i++) {
+    const art = articles[i];
+    const qte = parseInt(art.quantite, 10);
+    if (isNaN(qte) || qte <= 0) {
+      return res.status(400).json({ error: 'Quantite invalide pour la ligne ' + (i + 1) + ' (doit etre > 0).' });
+    }
+    articles[i].quantite = qte; // Normaliser
+  }
 
   const reference = generateRef(db);
   let ficheId = null;
@@ -218,6 +232,25 @@ router.post('/:id/upload', authenticate, upload.single('scan'), (req, res) => {
   `).get(req.params.id);
 
   res.json({ fiche: updated, message: 'Scan uploade et fiche archivee.' });
+});
+
+// DELETE /api/fiches/:id (admin seulement)
+router.delete('/:id', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
+
+  const transaction = db.transaction(() => {
+    // Supprimer les mouvements lies
+    db.prepare('DELETE FROM mouvements WHERE fiche_id = ?').run(req.params.id);
+    // Supprimer les lignes de la fiche
+    db.prepare('DELETE FROM fiche_reception_articles WHERE fiche_id = ?').run(req.params.id);
+    // Supprimer la fiche
+    db.prepare('DELETE FROM fiches_reception WHERE id = ?').run(req.params.id);
+  });
+
+  transaction();
+  res.json({ message: 'Fiche supprimee.' });
 });
 
 module.exports = router;

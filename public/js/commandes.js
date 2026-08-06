@@ -185,26 +185,27 @@ var Commandes = {
         }
 
         self._lignes = [{ article_id: '', quantite: 1, prix_unitaire: 0 }];
+        self._articleOptionsCmd = articleOptions;
 
-        function renderLignes() {
+        self._renderLignesCmd = function() {
           var h = '';
           for (var k = 0; k < self._lignes.length; k++) {
             var l = self._lignes[k];
             h += '<div class="commande-ligne" data-index="' + k + '">' +
-              '<div class="form-group" style="margin-bottom:0"><select class="form-select art-select" data-index="' + k + '"><option value="">Article</option>' + articleOptions + '</select></div>' +
+              '<div class="form-group" style="margin-bottom:0"><select class="form-select art-select" data-index="' + k + '"><option value="">Article</option>' + self._articleOptionsCmd + '</select></div>' +
               '<div class="form-group" style="margin-bottom:0"><input type="number" class="form-input qte-input" data-index="' + k + '" value="' + l.quantite + '" min="1"></div>' +
               '<div class="form-group" style="margin-bottom:0"><input type="number" class="form-input prix-input" data-index="' + k + '" value="' + l.prix_unitaire + '" min="0" step="0.01" placeholder="Prix"></div>' +
               '<button type="button" class="btn btn-sm btn-danger btn-remove-ligne" data-index="' + k + '">&times;</button>' +
               '</div>';
           }
           return h;
-        }
+        };
 
         var formHtml =
           '<div class="form-group"><label class="form-label">Fournisseur *</label><select class="form-select" id="cmd-fourn">' + fournOptions + '</select></div>' +
           '<div class="form-group"><label class="form-label">Notes</label><textarea class="form-textarea" id="cmd-notes" rows="2" placeholder="Notes ou references internes..."></textarea></div>' +
           '<div class="flex-between mb-sm"><h4 style="font-size:0.9375rem">Lignes</h4><button type="button" class="btn btn-sm btn-secondary" id="btn-add-ligne">+ Ajouter une ligne</button></div>' +
-          '<div id="lignes-container">' + renderLignes() + '</div>';
+          '<div id="lignes-container">' + self._renderLignesCmd() + '</div>';
 
         var modal = UI.modal(isEdit ? 'Modifier la commande' : 'Nouvelle commande', formHtml, [
           { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
@@ -215,7 +216,7 @@ var Commandes = {
         document.getElementById('btn-add-ligne').addEventListener('click', function() {
           self._lignes.push({ article_id: '', quantite: 1, prix_unitaire: 0 });
           var container = document.getElementById('lignes-container');
-          container.innerHTML = renderLignes();
+          container.innerHTML = self._renderLignesCmd();
           self._bindLignesEvents(container);
         });
 
@@ -229,7 +230,7 @@ var Commandes = {
             document.getElementById('cmd-fourn').value = c.fournisseur_id || '';
             document.getElementById('cmd-notes').value = c.notes || '';
             self._lignes = lignes.map(function(l) { return { article_id: l.article_id, quantite: l.quantite, prix_unitaire: l.prix_unitaire }; });
-            document.getElementById('lignes-container').innerHTML = renderLignes();
+            document.getElementById('lignes-container').innerHTML = self._renderLignesCmd();
             self._bindLignesEvents(document.getElementById('lignes-container'));
             // Set select values
             var selects = document.querySelectorAll('.art-select');
@@ -282,15 +283,8 @@ var Commandes = {
         var idx = parseInt(this.getAttribute('data-index'));
         if (self._lignes.length <= 1) { UI.toast('Il faut au moins une ligne.', 'warning'); return; }
         self._lignes.splice(idx, 1);
-        container.innerHTML = '';
-        // Re-render
-        var modalBody = container.parentElement;
-        var h = '';
-        for (var li = 0; li < self._lignes.length; li++) {
-          h += '<div class="commande-ligne">...</div>'; // Simplified: just re-add via parent refresh
-        }
-        // Simpler: just refresh the whole modal
-        document.querySelector('.modal-content .btn-remove-ligne').parentElement.parentElement.parentElement.style.display = 'none';
+        container.innerHTML = self._renderLignesCmd();
+        self._bindLignesEvents(container);
       });
     }
   },

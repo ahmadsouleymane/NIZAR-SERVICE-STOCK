@@ -34,30 +34,44 @@ router.post('/', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Article, type de retour et quantite requis.' });
   }
 
+  if (!['usage', 'non_utilise'].includes(type_retour)) {
+    return res.status(400).json({ error: 'Type de retour invalide (usage ou non_utilise).' });
+  }
+
+  const qte = parseInt(quantite, 10);
+  if (isNaN(qte) || qte <= 0) {
+    return res.status(400).json({ error: 'La quantite doit etre un nombre positif.' });
+  }
+
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(article_id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
+
+  if (localite_id) {
+    const loc = db.prepare('SELECT id FROM localites WHERE id = ?').get(localite_id);
+    if (!loc) return res.status(400).json({ error: 'Localite introuvable.' });
+  }
 
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO retours_carnets (article_id, localite_id, type_retour, quantite, numero_debut, numero_fin, motif, user_id)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(article_id, localite_id || null, type_retour, quantite, numero_debut || null, numero_fin || null, motif || null, req.user.id);
+    `).run(article_id, localite_id || null, type_retour, qte, numero_debut || null, numero_fin || null, motif || null, req.user.id);
 
     // Si retour non utilise, remettre en stock
     if (type_retour === 'non_utilise') {
       db.prepare('UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime(\'now\') WHERE id = ?')
-        .run(quantite, article_id);
+        .run(qte, article_id);
 
       db.prepare(`
         INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, date)
         VALUES (?, 'entree', ?, 'Retour carnet non utilise', ?, ?, datetime('now'))
-      `).run(article_id, quantite, req.user.id, localite_id || null);
+      `).run(article_id, qte, req.user.id, localite_id || null);
     } else {
-      // Retour usage : juste mouvement d'entree pour archivage/tracabilite
+      // Retour usage : juste mouvement d'entree pour archivage/tracabilite, pas de remise en stock
       db.prepare(`
         INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, date)
         VALUES (?, 'entree', ?, 'Retour carnet usage (archive)', ?, ?, datetime('now'))
-      `).run(article_id, quantite, req.user.id, localite_id || null);
+      `).run(article_id, qte, req.user.id, localite_id || null);
     }
 
     return result.lastInsertRowid;
