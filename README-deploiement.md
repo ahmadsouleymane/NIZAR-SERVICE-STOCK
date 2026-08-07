@@ -49,10 +49,12 @@ vérifie le code à chaque push et déclenche le déploiement.
 
 ## 4. Une fois en ligne
 
+- **Importer les données** : la base démarre **vide** (le fichier local n'est pas
+  poussé). Après le premier déploiement, connecte-toi puis **Paramètres → Importer**
+  ton fichier Excel : cela crée les articles, l'historique **et met à jour les stocks**
+  (Feuil4). Vérifie ensuite le tableau de bord.
 - **Changer les mots de passe par défaut** : connexion → Paramètres → Utilisateurs
   (le compte admin est `Moustapha`, mot de passe par défaut `admin123` — À CHANGER).
-- **Import des données** : après le premier déploiement, importer ton fichier Excel
-  (Paramètres → Importer) puis vérifier les stocks.
 - **Sauvegardes** : utiliser le bouton « Sauvegarde » régulièrement (les sauvegardes
   sont écrites sur le disque persistant `/data/backups`).
 
