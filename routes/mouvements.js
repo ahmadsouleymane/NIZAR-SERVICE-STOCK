@@ -1,6 +1,6 @@
 // routes/mouvements.js
 const express = require('express');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const router = express.Router();
 
 // GET /api/mouvements
@@ -49,8 +49,10 @@ router.get('/', authenticate, (req, res) => {
   res.json({ mouvements, totals });
 });
 
-// POST /api/mouvements
-router.post('/', authenticate, (req, res) => {
+// POST /api/mouvements — mouvement générique (admin seulement).
+// L'UI ne l'utilise plus : les entrées/sorties passent par les fiches (photos/impression).
+// Le restreindre empeche de modifier le stock hors des flux metier.
+router.post('/', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const { article_id, type, quantite, motif, demandeur, fournisseur_id } = req.body;
 

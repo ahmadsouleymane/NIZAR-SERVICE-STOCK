@@ -2,16 +2,36 @@
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const initDB = require('./database/init');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProd = process.env.NODE_ENV === 'production';
 
-// Middleware
-app.use(compression()); // gzip sur toutes les reponses (JS, CSS, JSON, PDF, Excel)
-app.use(cors());
+// === Middleware de securite ===
+// En-tetes HTTP de securite (helmet). CSP desactive : l'app utilise des styles
+// inline (style="") — une CSP stricte casserait le rendu.
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// CORS restreint : l'app est servie en same-origin (Express sert le front et l'API).
+// Aucun besoin d'ouvrir les origines. Definir CORS_ORIGIN si un autre domaine doit acceder a l'API.
+app.use(cors({ origin: process.env.CORS_ORIGIN || false }));
+
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
+
+// Limiter les tentatives de connexion (anti brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Trop de tentatives de connexion. Reessayez dans 15 minutes.' }
+});
+app.use('/api/auth/login', loginLimiter);
 
 // Initialiser la base de donnees
 const db = initDB();
@@ -77,8 +97,6 @@ app.use((err, req, res, next) => {
   }
 
   // Erreurs SQLite (contrainte FK, CHECK, UNIQUE)
-  // better-sqlite3 expose `err.code` (ex. SQLITE_CONSTRAINT_UNIQUE) ; son message
-  // ne contient pas forcement 'SQLITE_', on teste donc aussi le code.
   if ((err.code && err.code.startsWith('SQLITE_')) || (err.message && err.message.includes('SQLITE_'))) {
     if (err.message.includes('FOREIGN KEY')) {
       return res.status(400).json({ error: 'Reference invalide : element lie introuvable.' });
@@ -99,5 +117,7 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, () => {
   console.log('Nizar Stock - Serveur demarre sur http://localhost:' + PORT);
-  console.log('Comptes: admin/admin123, assistant/assistant123');
+  if (!isProd) {
+    console.log('Mode dev — comptes par defaut: admin/admin123, assistant/assistant123');
+  }
 });

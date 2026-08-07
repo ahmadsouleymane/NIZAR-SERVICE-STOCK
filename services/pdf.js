@@ -32,7 +32,8 @@ const MEDIUM_GRAY = '#888888';
  */
 function generateFichePDF(fiche, lignes) {
   return new Promise((resolve, reject) => {
-    const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '.pdf';
+    // Nom de fichier avec suffixe aleatoire : les PDF ne sont pas enumerables sur le reseau
+    const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
     const filepath = path.join(OUTPUT_DIR, filename);
     const doc = new PDFDocument({ size: 'A4', margin: MARGIN });
     const stream = fs.createWriteStream(filepath);
