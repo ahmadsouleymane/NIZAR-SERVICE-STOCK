@@ -13,3 +13,6 @@ xlsx
 *.db-wal
 public/uploads/
 .playwright-mcp/
+
+# Dossier interne Claude (scratch de session)
+.superpowers/
