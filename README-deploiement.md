@@ -1,8 +1,12 @@
-# Déploiement de Nizar Stock — Fly.io + GitHub Actions
+# Déploiement de Nizar Stock — Render (plan Starter) + GitHub Actions
 
-L'app tourne en Node.js avec une base **SQLite**. On la déploie sur **Fly.io** :
-le plan gratuit inclut **3 Go de volume persistant** (la base + les photos sont
-conservées). GitHub Actions vérifie le code à chaque push et redéploie.
+L'app tourne en Node.js avec une base **SQLite**. On la déploie sur **Render
+plan Starter** (~7 $/mois) : le disque persistant conserve la base et les photos.
+GitHub Actions vérifie le code à chaque push et déclenche le déploiement.
+
+> ⚠️ Le plan **gratuit** de Render ne supporte **pas les disques persistants**
+> (la base serait perdue à chaque redéploiement). Le plan **Starter** est le
+> plus petit à inclure un disque.
 
 ---
 
@@ -10,76 +14,43 @@ conservées). GitHub Actions vérifie le code à chaque push et redéploie.
 
 Le dépôt est **https://github.com/ahmadsouleymane/NIZAR-SERVICE-STOCK** (branche `main`).
 
-## 2. Créer le compte et l'outil Fly
+## 2. Créer le service sur Render (Blueprint)
 
-1. Crée un compte : **https://fly.io/app/sign-up** (plan gratuit, **aucune carte bancaire**).
-2. Installe l'outil Fly (`flyctl`) :
+1. Va sur **https://render.com** → connecte-toi.
+2. **New → Blueprint** → connecte le dépôt `NIZAR-SERVICE-STOCK`.
+3. Render lit `render.yaml` et crée le service (plan **Starter**) + le disque `/data`.
+4. Quand Render demande **`JWT_SECRET`** → colle le résultat de :
    ```bash
-   curl -L https://fly.io/install.sh | sh
+   openssl rand -hex 32
    ```
-   Puis ouvre un nouveau terminal (ou recharge ton shell).
-3. Connecte-toi (ouvre le navigateur) :
-   ```bash
-   fly auth login
-   ```
+5. **Deploy** → quelques minutes → l'app est en ligne en HTTPS :
+   **`https://nizar-stock.onrender.com`**.
 
-## 3. Créer l'app + le volume persistant
-
-Dans le dossier du projet :
-
-```bash
-# Crée l'app (lit le Dockerfile et fly.toml) sans déployer tout de suite
-# Choisis une région proche (ex: ams pour Amsterdam, fra pour Francfort, lhr pour Londres)
-fly launch --no-deploy
-
-# Crée le volume persistant (la base + les photos y vivent) — 1 Go, gratuit
-fly volumes create nizar_data --size 1 --region <la même région que l'app>
-
-# Définit le secret JWT (obligatoire en production)
-fly secrets set JWT_SECRET=$(openssl rand -hex 32)
-
-# Déploie
-fly deploy
-```
-
-Quelques minutes plus tard, l'app est en ligne en HTTPS :
-**`https://nizar-stock.fly.dev`** (nom de l'app visible dans `fly.toml`, change-le s'il est pris).
-
-## 4. Après le premier déploiement
+## 3. Après le premier déploiement
 
 - **Importer les données** : la base démarre **vide** (le fichier local n'est pas
   poussé). Connecte-toi puis **Paramètres → Importer** ton Excel : cela crée les
   articles, l'historique **et met à jour les stocks** (Feuil4).
 - **Changer les mots de passe par défaut** : Paramètres → Utilisateurs
   (le compte admin est `Moustapha`, mot de passe par défaut `admin123` — À CHANGER).
-- **Sauvegardes** : bouton « Sauvegarde » dans Paramètres (écrites sur le volume `/data/backups`).
+- **Sauvegardes** : bouton « Sauvegarde » dans Paramètres (écrites sur le disque `/data/backups`).
 
-## 5. Déploiement automatique à chaque push (GitHub Actions)
+## 4. Déploiement automatique à chaque push
 
-1. Génère un **jeton API Fly** :
-   ```bash
-   fly tokens create deploy
-   ```
+Render déploie automatiquement à chaque push sur `main` (intégration GitHub native).
+En option, pour que **GitHub Actions déclenche** le déploiement explicitement :
+1. Sur Render : **Settings → Deploy Hook** → copie l'URL.
 2. Sur GitHub : **Settings → Secrets and variables → Actions → New repository secret**
-   → nom `FLY_API_TOKEN` → colle le jeton.
-3. C'est tout : chaque `git push` sur `main` déclenche la **CI** (vérifications)
-   puis le **déploiement Fly** automatique.
+   → nom `RENDER_DEPLOY_HOOK_URL` → colle l'URL.
+
+Le workflow `.github/workflows/deploy.yml` fait alors : **CI (vérifications)** à
+chaque push, puis **déclenchement du déploiement Render**.
 
 ## Variables d'environnement
 
 | Variable | Rôle |
 |---|---|
-| `JWT_SECRET` | **Obligatoire** — secret de signature des jetons (définie via `fly secrets set`) |
-| `DB_PATH` | Emplacement du fichier SQLite (sur le volume `/data`) |
-| `UPLOAD_DIR` | Dossier des photos/PDF (sur le volume `/data`) |
+| `JWT_SECRET` | **Obligatoire en production** — secret de signature des jetons |
+| `DB_PATH` | Emplacement du fichier SQLite (sur le disque `/data`) |
+| `UPLOAD_DIR` | Dossier des photos/PDF (sur le disque `/data`) |
 | `PORT` | Port d'écoute (3000) |
-
-## Commandes Fly utiles
-
-```bash
-fly logs              # voir les logs de l'app
-fly status            # état de l'app
-fly volumes list      # volumes
-fly secrets list      # secrets définis
-fly scale show        # ressources
-```

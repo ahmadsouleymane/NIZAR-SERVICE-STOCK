@@ -1,0 +1,27 @@
+# Render Blueprint — déploiement de Nizar Stock (plan Starter, disque persistant)
+# Utilisation : sur render.com, « New » → « Blueprint » → connecter ce dépôt GitHub.
+services:
+  - type: web
+    name: nizar-stock
+    runtime: docker
+    plan: starter   # le plan gratuit ne supporte PAS les disques persistants
+    region: frankfurt
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+      # Secret JWT demandé à la création (à fournir : openssl rand -hex 32)
+      - key: JWT_SECRET
+        sync: false
+      # Base de données + uploads sur le disque persistant
+      - key: DB_PATH
+        value: /data/nizar.db
+      - key: UPLOAD_DIR
+        value: /data/uploads
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1

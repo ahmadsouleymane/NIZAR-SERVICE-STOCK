@@ -242,14 +242,12 @@ function initDB(dbPath) {
     )
   `);
 
-  // Seeds — idempotents par utilisateur (un compte renomme/supprime ne doit pas
-  // faire recraser les autres ni faire planter le demarrage).
-  const ensureUser = db.prepare('SELECT COUNT(*) as count FROM users WHERE username = ?');
-  const insertUser = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)');
-  if (ensureUser.get('admin').count === 0) {
+  // Seeds — uniquement sur une base VIERGE (aucun utilisateur). Un compte renomme
+  // (ex: admin -> Moustapha) n'est donc jamais recree en doublon.
+  const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get().count;
+  if (userCount === 0) {
+    const insertUser = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?)');
     insertUser.run('admin', bcrypt.hashSync('admin123', 10), 'admin');
-  }
-  if (ensureUser.get('assistant').count === 0) {
     insertUser.run('assistant', bcrypt.hashSync('assistant123', 10), 'assistant');
   }
 
