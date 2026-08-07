@@ -2,11 +2,11 @@
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { uploadDir } = require('./paths');
 
 const ALLOWED_EXT = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf'];
 
 // Creer le dossier d'upload de facon autonome (multer echoue en ENOENT sinon)
-const uploadDir = path.join(__dirname, '..', 'public', 'uploads');
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 
 function createUpload(field) {

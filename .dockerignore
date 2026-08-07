@@ -1,0 +1,12 @@
+node_modules
+.git
+.gitignore
+database/*.db
+database/*.db-*
+database/backups
+public/uploads
+.playwright-mcp
+*.log
+README-deploiement.md
+Dockerfile
+.dockerignore

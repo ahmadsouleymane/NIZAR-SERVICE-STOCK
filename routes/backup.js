@@ -8,7 +8,7 @@ const router = express.Router();
 // GET /api/backup — telecharge un snapshot consistant de la base (inclus le WAL)
 router.get('/', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
-  const backupDir = path.join(__dirname, '..', 'database', 'backups');
+  const backupDir = require('../services/paths').backupDir;
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true });
 
   const now = new Date();

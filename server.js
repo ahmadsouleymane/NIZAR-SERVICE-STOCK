@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const initDB = require('./database/init');
+const paths = require('./services/paths');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,8 +34,8 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/auth/login', loginLimiter);
 
-// Initialiser la base de donnees
-const db = initDB();
+// Initialiser la base de donnees (chemin configurable pour le disque persistant)
+const db = initDB(paths.dbPath);
 
 // Injecter db dans toutes les requetes
 app.use((req, res, next) => {
@@ -66,11 +67,11 @@ app.use('/api/alertes', require('./routes/alertes'));
 app.use('/api/recherche', require('./routes/recherche'));
 app.use('/api/billets', require('./routes/billets'));
 
-// Servir les uploads
+// Servir les uploads (repertoire configurable, sur le disque persistant en deploiement)
 app.use('/uploads', (req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   next();
-}, express.static(path.join(__dirname, 'public', 'uploads')));
+}, express.static(paths.uploadDir));
 
 // Servir les fichiers statiques du frontend
 app.use(express.static(path.join(__dirname, 'public')));

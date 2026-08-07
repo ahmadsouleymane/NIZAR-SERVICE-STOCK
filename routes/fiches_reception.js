@@ -296,7 +296,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   logAudit(db, req.user.id, req.user.username, 'SUPPR_FICHE', fiche.reference || String(req.params.id));
 
   // Nettoyer les fichiers sur disque (PDF original + scan signe) pour eviter les orphelins
-  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  const uploadsDir = require('../services/paths').uploadDir;
   const filesToRemove = [fiche.fichier_path, fiche.scan_path];
   for (const f of filesToRemove) {
     if (!f) continue;

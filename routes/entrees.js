@@ -219,7 +219,7 @@ router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   // Recuperer les photos AVANT la suppression : la fiche les supprime en cascade en base,
   // il faut donc lister les chemins avant pour pouvoir les nettoyer sur disque.
   const photos = db.prepare('SELECT * FROM fiche_entree_photos WHERE fiche_id = ?').all(req.params.id);
-  const uploadsDir = path.join(__dirname, '..', 'public', 'uploads');
+  const uploadsDir = require('../services/paths').uploadDir;
   const removePhotos = function() {
     for (const p of photos) {
       const full = path.resolve(uploadsDir, String(p.fichier_path).replace(/^\/uploads\//, ''));

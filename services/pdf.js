@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 
 const LOGO_PATH = path.join(__dirname, '..', 'public', 'logo.jpeg');
-const OUTPUT_DIR = path.join(__dirname, '..', 'public', 'uploads');
+const OUTPUT_DIR = require('./paths').uploadDir;
 
 // S'assurer que le dossier de sortie existe
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
