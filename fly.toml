@@ -1,0 +1,23 @@
+# fly.toml — Nizar Stock (Fly.io, plan gratuit : 1 VM 256MB + volume persistant)
+# Nom de l'app : change-le s'il est déjà pris (doit être unique sur Fly).
+app = "nizar-stock"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  PORT = "3000"
+  # Base de données + uploads sur le volume persistant /data
+  DB_PATH = "/data/nizar.db"
+  UPLOAD_DIR = "/data/uploads"
+
+# Volume persistant « nizar_data » : à créer avec :
+#   fly volumes create nizar_data --size 1 --region <region>
+[[mounts]]
+  source = "nizar_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true

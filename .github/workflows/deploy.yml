@@ -2,9 +2,7 @@ name: CI + Deploy
 
 # Ce workflow :
 #  1) à chaque push (main) ou PR → vérifie la syntaxe de tout le JS
-#  2) après un push sur main validé → déclenche le déploiement Render
-#     (via le webhook si RENDER_DEPLOY_HOOK_URL est défini, sinon Render
-#      déploie de toute façon grâce à son intégration GitHub native)
+#  2) après un push sur main validé → déploie sur Fly.io
 
 on:
   push:
@@ -38,18 +36,15 @@ jobs:
           echo "✓ Syntaxe valide sur tous les fichiers"
 
   deploy:
-    name: Déployer sur Render
+    name: Déployer sur Fly.io
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: check
     runs-on: ubuntu-latest
     steps:
-      - name: Déclencher le déploiement Render
+      - name: Récupérer le code
+        uses: actions/checkout@v4
+
+      - name: Déployer sur Fly.io
+        uses: superfly/flyctl-actions/deploy@master
         env:
-          DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
-        run: |
-          if [ -n "$DEPLOY_HOOK" ]; then
-            curl -fsS -X POST "$DEPLOY_HOOK"
-            echo "✓ Déploiement Render déclenché"
-          else
-            echo "RENDER_DEPLOY_HOOK_URL non défini — Render déploie automatiquement sur push (intégration GitHub native)."
-          fi
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
