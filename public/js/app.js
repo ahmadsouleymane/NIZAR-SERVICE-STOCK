@@ -13,6 +13,7 @@
     { id: 'entrees', label: 'Entrées', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' },
     { id: 'mouvements', label: 'Mouvements', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>' },
     { id: 'retours', label: 'Retours carnets', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>' },
+    { id: 'fiches_besoin', label: 'Fiches de besoin', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 12h6"/><path d="M9 16h6"/><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' },
     { id: 'souches', label: 'Souches (n° recherche)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>' },
     { id: 'billets', label: 'Billets en circulation', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 010 4v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4a2 2 0 010-4z"/><line x1="7" y1="9" x2="7" y2="15"/><line x1="11" y1="9" x2="11" y2="15"/></svg>' },
     { id: 'inventaire', label: 'Inventaire', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M3 21h18"/><path d="M9 21v-6h6v6"/></svg>' },
@@ -31,6 +32,7 @@
     { label: 'Nouvelle entrée', page: 'entrees', open: true },
     { label: 'Nouvelle sortie', page: 'fiches', open: true },
     { label: 'Nouveau retour', page: 'retours', open: true },
+    { label: 'Nouvelle fiche de besoin', page: 'fiches_besoin', open: true },
     { label: 'Nouveau comptage', page: 'comptage', open: true },
     { label: 'Mouvements', page: 'mouvements' },
     { label: 'Souches (n° recherche)', page: 'souches' },
@@ -40,7 +42,7 @@
     { label: 'Paramètres', page: 'parametres' }
   ];
   // Méthode « nouveau » à ouvrir automatiquement après navigation
-  var QUICK_OPEN = { entrees: '_showForm', fiches: '_showEnvoiForm', retours: '_showForm', comptage: '_showForm' };
+  var QUICK_OPEN = { entrees: '_showForm', fiches: '_showEnvoiForm', retours: '_showForm', comptage: '_showForm', fiches_besoin: '_showForm' };
   var __pendingAction = null;
 
   // Construire les navigations
@@ -57,7 +59,7 @@
       if (item) drawerHtml += '<a href="#' + item.id + '" data-page="' + item.id + '">' + item.icon + '<span>' + item.label + '</span></a>';
     }
     drawerHtml += '<div class="drawer-section-label">Operations</div>';
-    var opIds = ['retours', 'souches', 'billets', 'comptage'];
+    var opIds = ['retours', 'fiches_besoin', 'souches', 'billets', 'comptage'];
     for (var o = 0; o < opIds.length; o++) {
       var oitem = findItem(opIds[o]);
       if (oitem) drawerHtml += '<a href="#' + oitem.id + '" data-page="' + oitem.id + '">' + oitem.icon + '<span>' + oitem.label + '</span></a>';
@@ -239,7 +241,8 @@
       entrees: typeof Entrees !== 'undefined' ? Entrees : null,
       fiches: typeof Fiches !== 'undefined' ? Fiches : null,
       retours: typeof Retours !== 'undefined' ? Retours : null,
-      comptage: typeof Inventaire !== 'undefined' ? Inventaire : null
+      comptage: typeof Inventaire !== 'undefined' ? Inventaire : null,
+      fiches_besoin: typeof FichesBesoin !== 'undefined' ? FichesBesoin : null
     };
     var m = pagesMap[page];
     if (m && typeof m[method] === 'function') {
@@ -259,6 +262,7 @@
       entrees: typeof Entrees !== 'undefined' ? Entrees : null,
       fournisseurs: typeof Fournisseurs !== 'undefined' ? Fournisseurs : null,
       retours: typeof Retours !== 'undefined' ? Retours : null,
+      fiches_besoin: typeof FichesBesoin !== 'undefined' ? FichesBesoin : null,
       souches: typeof Souches !== 'undefined' ? Souches : null,
       billets: typeof Billets !== 'undefined' ? Billets : null,
       inventaire: typeof InventaireStock !== 'undefined' ? InventaireStock : null,
