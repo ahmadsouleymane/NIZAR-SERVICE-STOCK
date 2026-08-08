@@ -1,6 +1,8 @@
 // routes/mouvements.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
+const { checkOverlap, recordSerie } = require('../services/series');
+const { logAudit } = require('../services/audit');
 const router = express.Router();
 
 // GET /api/mouvements
@@ -107,6 +109,50 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
 
   transaction();
   res.status(201).json({ mouvement });
+});
+
+// GET /api/mouvements/anomalies — mouvements d'articles numerotes sans plage de
+// numeros valide (essentiellement issus de l'import historique).
+router.get('/anomalies', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const anomalies = db.prepare(`
+    SELECT m.id, m.date, m.type, m.quantite, m.motif, a.id as article_id, a.nom as article_nom, l.nom as localite_nom
+    FROM mouvements m
+    JOIN articles a ON m.article_id = a.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    WHERE a.type_article = 'numerote' AND (m.numero_debut IS NULL OR m.numero_fin IS NULL)
+    ORDER BY m.date ASC, m.id ASC
+    LIMIT 500
+  `).all();
+  res.json({ anomalies });
+});
+
+// PATCH /api/mouvements/:id/numero — correction manuelle admin d'une plage manquante
+router.patch('/:id/numero', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const { numero_debut, numero_fin } = req.body;
+
+  const mvt = db.prepare('SELECT m.*, a.type_article, a.nom as article_nom FROM mouvements m JOIN articles a ON m.article_id = a.id WHERE m.id = ?').get(req.params.id);
+  if (!mvt) return res.status(404).json({ error: 'Mouvement introuvable.' });
+  if (mvt.numero_debut || mvt.numero_fin) return res.status(400).json({ error: 'Ce mouvement a deja une plage de numeros enregistree.' });
+
+  try {
+    const transaction = db.transaction(() => {
+      const overlap = checkOverlap(db, mvt.article_id, numero_debut, numero_fin, mvt.type === 'entree' ? 'entree' : 'sortie');
+      if (overlap) throw new Error('Chevauchement pour ' + mvt.article_nom + ' : plage ' + numero_debut + '-' + numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
+
+      db.prepare('UPDATE mouvements SET numero_debut = ?, numero_fin = ? WHERE id = ?').run(String(numero_debut), String(numero_fin), req.params.id);
+      recordSerie(db, mvt.article_id, numero_debut, numero_fin, mvt.quantite, mvt.type === 'entree' ? 'entree' : 'sortie', req.params.id);
+    });
+    transaction();
+  } catch (err) {
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
+
+  logAudit(db, req.user.id, req.user.username, 'CORRIGER_NUMERO', mvt.article_nom + ' — mouvement #' + req.params.id + ' -> ' + numero_debut + '-' + numero_fin);
+  const updated = db.prepare('SELECT * FROM mouvements WHERE id = ?').get(req.params.id);
+  res.json({ mouvement: updated });
 });
 
 module.exports = router;

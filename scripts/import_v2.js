@@ -41,16 +41,18 @@ function excelDate(v) {
   return null;
 }
 
-// "6001-6100" -> {debut:6001, fin:6100} ; "501" -> {debut:501, fin:501} ; sinon null
+// "6001-6100" -> {debut:6001, fin:6100} ; "501" -> {debut:501, fin:501} ; sinon null.
+// Strict : n'accepte que ces deux formes (apres nettoyage des espaces). Toute autre
+// chaine (texte, plages multiples, notes...) retourne null plutot que de fusionner
+// ses chiffres en un nombre errone (ex: "6001 a 6100" ne doit PAS devenir 60016100).
 function parseRange(s) {
-  const t = String(s || '').trim();
+  const t = String(s || '').trim().replace(/\s+/g, '');
   if (!t) return null;
-  const parts = t
-    .split('-')
-    .map((x) => parseInt(x.replace(/\D/g, ''), 10))
-    .filter((x) => !isNaN(x));
-  if (!parts.length) return null;
-  return { debut: parts[0], fin: parts.length > 1 ? parts[parts.length - 1] : parts[0] };
+  const single = /^(\d+)$/.exec(t);
+  if (single) return { debut: parseInt(single[1], 10), fin: parseInt(single[1], 10) };
+  const range = /^(\d+)-(\d+)$/.exec(t);
+  if (range) return { debut: parseInt(range[1], 10), fin: parseInt(range[2], 10) };
+  return null;
 }
 
 function makeRef(name, used) {
