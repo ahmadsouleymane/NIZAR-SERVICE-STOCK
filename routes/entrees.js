@@ -21,6 +21,30 @@ function generateRef(db) {
   return 'FE-' + y + m + '-' + String(next).padStart(3, '0');
 }
 
+// Construit les lignes { article_nom, quantite, numero_debut, numero_fin, unite } pour le PDF,
+// depuis articles_json (brouillon, avant validation) ou fiche_entree_articles (apres validation).
+function buildLignesForPDF(db, fiche) {
+  if (fiche.validee) {
+    return db.prepare(`
+      SELECT fea.quantite, fea.numero_debut, fea.numero_fin, a.nom as article_nom, a.unite
+      FROM fiche_entree_articles fea LEFT JOIN articles a ON fea.article_id = a.id
+      WHERE fea.fiche_id = ?
+    `).all(fiche.id);
+  }
+  let articles;
+  try { articles = JSON.parse(fiche.articles_json || '[]'); } catch (e) { articles = []; }
+  return articles.map(function(art) {
+    const a = db.prepare('SELECT nom, unite FROM articles WHERE id = ?').get(art.article_id);
+    return {
+      quantite: art.quantite,
+      numero_debut: art.numero_debut || null,
+      numero_fin: art.numero_fin || null,
+      article_nom: a ? a.nom : ('Article #' + art.article_id),
+      unite: a ? a.unite : ''
+    };
+  });
+}
+
 // GET /api/entrees — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
@@ -71,11 +95,48 @@ router.get('/:id', authenticate, (req, res) => {
   res.json({ fiche, lignes, photos });
 });
 
+// POST /api/entrees/:id/bon-livraison — genere (ou regenere) le PDF quand le
+// fournisseur n'a transmis aucun bon de livraison papier
+router.post('/:id/bon-livraison', authenticate, async (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare(`
+    SELECT fe.*, f.nom as fournisseur_nom FROM fiches_entree fe
+    LEFT JOIN fournisseurs f ON fe.fournisseur_id = f.id WHERE fe.id = ?
+  `).get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
+
+  const lignes = buildLignesForPDF(db, fiche);
+  if (!lignes.length) return res.status(400).json({ error: 'Aucun article sur cette entree : impossible de generer le bon de livraison.' });
+
+  try {
+    const { generateBonLivraisonPDF } = require('../services/pdf');
+    const pdfPath = await generateBonLivraisonPDF(fiche, lignes);
+    db.prepare('UPDATE fiches_entree SET fichier_path = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(pdfPath, req.params.id);
+    logAudit(db, req.user.id, req.user.username, 'GENERER_BL', fiche.reference || String(req.params.id));
+    res.json({ fichier_path: pdfPath, message: 'Bon de livraison genere.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur generation PDF: ' + err.message });
+  }
+});
+
+// GET /api/entrees/:id/pdf — telecharger/re-imprimer le bon de livraison genere
+router.get('/:id/pdf', authenticate, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
+  if (!fiche.fichier_path) return res.status(404).json({ error: "Aucun bon de livraison genere pour cette entree." });
+
+  const uploadsDir = require('../services/paths').uploadDir;
+  const fullPath = path.resolve(uploadsDir, String(fiche.fichier_path).replace(/^\/uploads\//, ''));
+  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'Fichier introuvable sur le serveur.' });
+  res.download(fullPath);
+});
+
 // POST /api/entrees — creer un brouillon d'entree (stock NON incremente avant validation)
 // Les articles saisis sont conserves dans articles_json et lus a la validation.
 router.post('/', authenticate, (req, res) => {
   const db = req.db;
-  const { fournisseur_id, numero_bl, numero_facture, notes, articles } = req.body;
+  const { fournisseur_id, numero_bl, numero_facture, numero_fiche_besoin, notes, articles } = req.body;
 
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
 
@@ -96,9 +157,9 @@ router.post('/', authenticate, (req, res) => {
   try {
     const transaction = db.transaction(() => {
       const result = db.prepare(`
-        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, notes, user_id, statut, validee, articles_json)
-        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee', 0, ?)
-      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, notes || null, req.user.id, JSON.stringify(articles));
+        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, numero_fiche_besoin, notes, user_id, statut, validee, articles_json)
+        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, ?, 'validee', 0, ?)
+      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, notes || null, req.user.id, JSON.stringify(articles));
       ficheId = result.lastInsertRowid;
     });
     transaction();
@@ -123,14 +184,15 @@ router.post('/:id/valider', authenticate, (req, res) => {
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
   if (fiche.validee === 1) return res.status(400).json({ error: 'Entree deja validee.' });
 
-  // Photo du bon de livraison ET de la facture obligatoires
-  const hasBL = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'bl'").get(req.params.id).c;
-  const hasFacture = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'facture'").get(req.params.id).c;
-  if (hasBL === 0 || hasFacture === 0) {
+  // Bon de livraison : photo fournisseur OU PDF genere par l'app. Facture : photo obligatoire (inchange).
+  const hasPhotoBL = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'bl'").get(req.params.id).c > 0;
+  const hasFacture = db.prepare("SELECT COUNT(*) as c FROM fiche_entree_photos WHERE fiche_id = ? AND type = 'facture'").get(req.params.id).c > 0;
+  const hasBL = hasPhotoBL || !!fiche.fichier_path;
+  if (!hasBL || !hasFacture) {
     const missing = [];
-    if (hasBL === 0) missing.push('bon de livraison');
-    if (hasFacture === 0) missing.push('facture');
-    return res.status(400).json({ error: 'Validation impossible : photo ' + missing.join(' et photo ') + ' manquante.' });
+    if (!hasBL) missing.push('bon de livraison (photo ou generation)');
+    if (!hasFacture) missing.push('facture');
+    return res.status(400).json({ error: 'Validation impossible : ' + missing.join(' et ') + ' manquant.' });
   }
 
   let articles;
