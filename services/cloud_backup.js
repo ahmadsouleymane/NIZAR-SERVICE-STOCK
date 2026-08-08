@@ -31,7 +31,8 @@ async function githubGet(filePath) {
       Authorization: 'Bearer ' + TOKEN,
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28'
-    }
+    },
+    signal: AbortSignal.timeout(20000)
   });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error('GitHub GET ' + res.status + ' (' + filePath + ')');
@@ -49,7 +50,8 @@ async function githubPut(filePath, base64Content, sha, message) {
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify(body)
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(20000)
   });
   if (!res.ok) {
     const txt = await res.text();
@@ -59,11 +61,24 @@ async function githubPut(filePath, base64Content, sha, message) {
 }
 
 // === Restauration au démarrage ===
-// Restaure la base depuis GitHub si le fichier local n'existe pas (ou est vide).
+// Restaure la base depuis GitHub SEULEMENT si le fichier local n'a pas de
+// données réelles (base absente ou vierge issue du seed). Une base locale avec
+// des articles est toujours conservée.
+function dbHasUserData() {
+  if (!fs.existsSync(DB_FILE)) return false;
+  try {
+    const Database = require('better-sqlite3');
+    const db = new Database(DB_FILE, { readonly: true });
+    const c = db.prepare('SELECT COUNT(*) c FROM articles').get().c;
+    db.close();
+    return c > 0;
+  } catch (e) { return false; }
+}
+
 async function restore() {
   if (!enabled()) return false;
-  if (fs.existsSync(DB_FILE) && fs.statSync(DB_FILE).size > 0) {
-    console.log('[backup] Base locale présente — restauration ignorée.');
+  if (dbHasUserData()) {
+    console.log('[backup] Base locale avec données — restauration ignorée.');
     return false;
   }
   const meta = await githubGet(REMOTE_PATH);
@@ -117,13 +132,13 @@ async function pushInitial() {
 }
 
 // === Démarrage du service (côté serveur) ===
+// La restauration est faite par server.js AVANT initDB (voir serveur) — ici on
+// gère uniquement les sauvegardes périodiques et à l'arrêt.
 function start(db) {
   if (!enabled()) {
     console.log('[backup] GH_BACKUP_REPO non défini — synchro GitHub désactivée (mode local).');
     return;
   }
-  // Restauration au démarrage (non bloquante)
-  restore().catch(err => console.error('[backup] Restauration impossible :', err.message));
   // Sauvegarde périodique
   const timer = setInterval(() => { save(db, 'periodique').catch(() => {}); }, INTERVAL_MS);
   timer.unref();

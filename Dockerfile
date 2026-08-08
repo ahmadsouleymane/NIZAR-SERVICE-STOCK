@@ -1,6 +1,7 @@
 # Nizar Stock — conteneur de production (Render plan gratuit / Railway / Fly.io)
-# node:20-slim (glibc) : better-sqlite3 s'installe sans compilation.
-FROM node:20-slim
+# node:22-slim (LTS, glibc) : better-sqlite3 s'installe sans compilation, et le
+# SDK AWS (R2) exige node >= 22 dans ses versions récentes.
+FROM node:22-slim
 
 ENV NODE_ENV=production
 ENV PORT=3000

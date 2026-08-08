@@ -13,6 +13,8 @@ const initDB = require('./database/init');
 const paths = require('./services/paths');
 
 const app = express();
+// Derrière le proxy Render : nécessaire pour express-rate-limit (X-Forwarded-For).
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
@@ -38,19 +40,9 @@ const loginLimiter = rateLimit({
 });
 app.use('/api/auth/login', loginLimiter);
 
-// Initialiser la base de donnees (chemin configurable pour le disque persistant)
-const db = initDB(paths.dbPath);
-
-// Sauvegarde GitHub de la base (plan Render gratuit = pas de disque persistant) :
-// restaure la base au demarrage, la pousse toutes les ~3 min et a l'arret (SIGTERM).
-// Inactif en local (GH_BACKUP_REPO non defini).
-require('./services/cloud_backup').start(db);
-
-// Synchronisation des uploads (photos, PDF) vers Cloudflare R2 : restaure au
-// demarrage, synchronise toutes les ~5 min et a l'arret. Inactif si R2_* non definis.
-require('./services/r2_backup').start(paths.uploadDir);
-
-// Injecter db dans toutes les requetes
+// La base est injectée dans req.db. Elle est initialisée APRÈS la restauration
+// depuis GitHub (voir boot() en bas de fichier) — un accès avant ne voit que null.
+let db = null;
 app.use((req, res, next) => {
   req.db = db;
   next();
@@ -134,9 +126,30 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erreur interne du serveur.' });
 });
 
-app.listen(PORT, () => {
-  console.log('Nizar Stock - Serveur demarre sur http://localhost:' + PORT);
-  if (!isProd) {
-    console.log('Mode dev — comptes par defaut: admin/admin123, assistant/assistant123');
-  }
-});
+// Démarrage : initialise la base, lance les sauvegardes, puis écoute.
+function boot() {
+  db = initDB(paths.dbPath);
+
+  // Sauvegarde GitHub de la base (plan Render gratuit = pas de disque persistant) :
+  // pousse toutes les ~3 min et à l'arrêt (SIGTERM). La restauration est faite
+  // AVANT initDB ci-dessous. Inactif si GH_BACKUP_REPO non défini.
+  require('./services/cloud_backup').start(db);
+
+  // Synchronisation des uploads (photos, PDF) vers Cloudflare R2 : restaure au
+  // démarrage, synchronise toutes les ~5 min et à l'arrêt. Inactif si R2_* non définis.
+  require('./services/r2_backup').start(paths.uploadDir);
+
+  app.listen(PORT, () => {
+    console.log('Nizar Stock - Serveur demarre sur http://localhost:' + PORT);
+    if (!isProd) {
+      console.log('Mode dev — comptes par defaut: admin/admin123, assistant/assistant123');
+    }
+  });
+}
+
+// Restaure la base depuis GitHub AVANT d'initialiser le fichier local : sur le
+// disque éphémère de Render, le fichier n'existe pas encore → on télécharge la
+// dernière sauvegarde. En local, une base avec des données est toujours conservée.
+require('./services/cloud_backup').restore()
+  .catch(function (err) { console.error('[backup] Restauration impossible :', err.message); })
+  .finally(boot);
