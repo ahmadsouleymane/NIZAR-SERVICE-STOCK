@@ -125,8 +125,12 @@ router.post('/', authenticate, async (req, res) => {
     for (const art of articles) {
       const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
       if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
-      // Pas de contrôle de stock : le gestionnaire enregistre les sorties même si le
-      // stock théorique est à 0 (le stock réel est géré à part).
+
+      // Garde-fou : jamais de stock negatif. Bloquant pour tous les roles (un test
+      // recent a laisse un article passer a -10 avant ce controle).
+      if (article.stock_actuel < art.quantite) {
+        throw new Error('Stock insuffisant pour ' + article.nom + ' : ' + article.stock_actuel + ' ' + (article.unite || '') + ' disponible(s), ' + art.quantite + ' demande(s).');
+      }
 
       if (article.type_article === 'numerote') {
         if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
