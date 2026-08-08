@@ -178,6 +178,7 @@ var Fiches = {
 
       var body =
         '<div class="form-group"><label class="form-label">Destination *</label><select class="form-select" id="envoi-loc">' + locOptions + '</select></div>' +
+        '<div class="form-group"><label class="form-label">Date de la sortie</label><input type="date" class="form-input" id="envoi-date"></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-envoi"></div>';
 
@@ -300,6 +301,8 @@ var Fiches = {
     }
 
     var self = this;
+    var dateInput = document.getElementById('envoi-date');
+    var dateEnvoi = dateInput ? (dateInput.value || null) : null;
 
     // Pre-ouvrir la fenetre d'impression pendant le geste utilisateur (anti-bloqueur de popup) :
     // on la redirigera vers la fiche creee une fois la creation terminee.
@@ -308,7 +311,7 @@ var Fiches = {
       printWin.document.write('<html><body style="font-family:sans-serif;color:#6B7280;padding:40px;text-align:center">Création de la fiche…</body></html>');
     }
 
-    API.createFiche({ localite_id: locId, articles: arts })
+    API.createFiche({ localite_id: locId, articles: arts, date_envoi: dateEnvoi })
       .then(function(data) {
         var f = data.fiche;
         UI.toast('Sortie enregistrée — Fiche ' + f.reference + ' créée (statut : envoyée). PDF généré.', 'success');

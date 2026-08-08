@@ -75,7 +75,13 @@ router.get('/:id', authenticate, (req, res) => {
 // POST /api/fiches — creer un envoi + generer le PDF automatiquement
 router.post('/', authenticate, async (req, res) => {
   const db = req.db;
-  const { localite_id, articles, notes } = req.body;
+  const { localite_id, articles, notes, date_envoi } = req.body;
+
+  // Date d'envoi : celle fournie par l'utilisateur (ex: date reelle de l'envoi,
+  // pour les sorties historiques), sinon la date du jour.
+  const dateEffective = (date_envoi && !isNaN(new Date(date_envoi).getTime()))
+    ? date_envoi + ' 00:00:00'
+    : new Date().toISOString().split('T')[0] + ' 00:00:00';
 
   if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
@@ -101,8 +107,8 @@ router.post('/', authenticate, async (req, res) => {
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, date_envoi)
-      VALUES (?, ?, ?, 'envoyee', ?, datetime('now','localtime'))
-    `).run(reference, localite_id, req.user.id, notes || null);
+      VALUES (?, ?, ?, 'envoyee', ?, ?)
+    `).run(reference, localite_id, req.user.id, notes || null, dateEffective);
 
     ficheId = result.lastInsertRowid;
 
@@ -116,7 +122,7 @@ router.post('/', authenticate, async (req, res) => {
     `);
     const insertMvt = db.prepare(`
       INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, demandeur, date)
-      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, ?, datetime('now','localtime'))
+      VALUES (?, 'sortie', ?, 'Envoi — Fiche ' || ?, ?, ?, ?, ?, ?)
     `);
     const updateStock = db.prepare(`
       UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now','localtime') WHERE id = ?
@@ -143,7 +149,7 @@ router.post('/', authenticate, async (req, res) => {
 
       const unite = (art.unite || '').trim() || (article.unite || '').trim();
       insertLigne.run(ficheId, art.article_id, art.quantite, unite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
-      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, null);
+      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, null, dateEffective);
       updateStock.run(art.quantite, art.article_id);
     }
   });
