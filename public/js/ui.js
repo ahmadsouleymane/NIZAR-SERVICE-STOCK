@@ -139,7 +139,7 @@ var UI = {
     return modal;
   },
 
-  // Autocompletion (recherche avec suggestions) — articles, fournisseurs, etc.
+  // Autocompletion (recherche avec suggestions) — articles, etc.
   // options: {
   //   items: [{id,label,meta}]            // filtrage local (defaut)
   //   search(term, cb): cb([{id,label,meta}])  // recherche serveur (lazy) si fournie

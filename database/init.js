@@ -230,6 +230,15 @@ function initDB(dbPath) {
   ensureColumn(db, 'fiches_entree', 'validee', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'fiches_entree', 'articles_json', 'TEXT');
 
+  // Migration : restaurer le schema fournisseur/commande (au cas ou une base aurait
+  // ete creee sans ces colonnes). Le fournisseur est conserve ; les tables commandes
+  // restent en base pour le centre de rapports (la page « Commandes » a ete retiree
+  // de l'interface). Idempotent.
+  ensureColumn(db, 'articles', 'fournisseur_id', 'INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL');
+  ensureColumn(db, 'mouvements', 'fournisseur_id', 'INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL');
+  ensureColumn(db, 'mouvements', 'commande_id', 'INTEGER REFERENCES commandes(id) ON DELETE SET NULL');
+  ensureColumn(db, 'fiches_entree', 'fournisseur_id', 'INTEGER REFERENCES fournisseurs(id) ON DELETE SET NULL');
+
   // Migration des unites : « piece » devient « unite », et les unites supprimees
   // (« boite », « flacon », « ramette ») sont remappees sur « unite ».
   db.exec("UPDATE articles SET unite = 'unite', updated_at = datetime('now','localtime') WHERE unite IN ('piece', 'boite', 'flacon', 'ramette')");

@@ -2,7 +2,7 @@
 // Strategie NETWORK-FIRST : on sert toujours la derniere version des fichiers
 // (l'app change souvent), le cache ne sert qu'en secours hors-ligne.
 // Version de cache incrementee a chaque deploiement pour purger l'ancien.
-var CACHE_NAME = 'nizar-stock-v4';
+var CACHE_NAME = 'nizar-stock-v5';
 var STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -13,14 +13,13 @@ var STATIC_ASSETS = [
   '/js/dashboard.js',
   '/js/articles.js',
   '/js/mouvements.js',
-  '/js/fournisseurs.js',
-  '/js/commandes.js',
   '/js/fiches.js',
   '/js/entrees.js',
   '/js/retours.js',
   '/js/souches.js',
   '/js/inventaire.js',
   '/js/inventaire_stock.js',
+  '/js/reportui.js',
   '/js/rapports.js',
   '/js/parametres.js',
   '/js/trends.js',
@@ -30,6 +29,9 @@ var STATIC_ASSETS = [
   '/imprimer.html',
   '/manifest.json'
 ];
+
+// Chart.js servi par CDN — mis en cache avec stale-while-revalidate pour l'offline
+var CHART_CDN = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
 
 // Install : pre-cacher les assets de base
 self.addEventListener('install', function(event) {
@@ -58,6 +60,24 @@ self.addEventListener('activate', function(event) {
 self.addEventListener('fetch', function(event) {
   var request = event.request;
   var url = new URL(request.url);
+
+  // Chart.js CDN : stale-while-revalidate (disponible offline après le premier chargement)
+  if (url.href === CHART_CDN || (url.origin === 'https://cdn.jsdelivr.net' && url.pathname.indexOf('chart.js@4') !== -1)) {
+    event.respondWith(
+      fetch(request).then(function(response) {
+        if (response && response.status === 200) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) { cache.put(request, clone); });
+        }
+        return response;
+      }).catch(function() {
+        return caches.match(request).then(function(cached) {
+          return cached || new Response('', { status: 504, headers: { 'Content-Type': 'text/plain' } });
+        });
+      })
+    );
+    return;
+  }
 
   // Laisse les autres origines (Google Fonts, etc.) au navigateur
   if (url.origin !== location.origin) return;

@@ -11,10 +11,6 @@ router.get('/', authenticate, (req, res) => {
   const mouvementsJour = db.prepare(
     "SELECT COUNT(*) as count FROM mouvements WHERE date >= date('now','localtime')"
   ).get().count;
-  const commandesEnCours = db.prepare(
-    "SELECT COUNT(*) as count FROM commandes WHERE statut IN ('brouillon', 'envoyee')"
-  ).get().count;
-
   const valeurStock = db.prepare(
     "SELECT COALESCE(SUM(stock_actuel * prix_unitaire), 0) as v FROM articles"
   ).get().v;
@@ -50,7 +46,7 @@ router.get('/', authenticate, (req, res) => {
   `).all();
 
   res.json({
-    kpi: { totalArticles, alertesStock, mouvementsJour, commandesEnCours, entreesJour, valeurStock },
+    kpi: { totalArticles, alertesStock, mouvementsJour, entreesJour, valeurStock },
     entreesRecentes,
     mouvementsRecents,
     topAlertes

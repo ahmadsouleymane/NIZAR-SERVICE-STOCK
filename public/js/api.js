@@ -140,19 +140,6 @@ const API = {
     });
   },
 
-  // Mouvements
-  async getMouvements(params = {}) {
-    const qs = new URLSearchParams(params).toString();
-    return this.fetch('/api/mouvements' + (qs ? '?' + qs : ''));
-  },
-
-  async createMouvement(data) {
-    return this.fetch('/api/mouvements', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  },
-
   // Fournisseurs
   async getFournisseurs() {
     return this.fetch('/api/fournisseurs');
@@ -182,42 +169,19 @@ const API = {
     });
   },
 
-  // Commandes
-  async getCommandes(params = {}) {
+  // Mouvements
+  async getMouvements(params = {}) {
     const qs = new URLSearchParams(params).toString();
-    return this.fetch('/api/commandes' + (qs ? '?' + qs : ''));
+    return this.fetch('/api/mouvements' + (qs ? '?' + qs : ''));
   },
 
-  async getCommande(id) {
-    return this.fetch('/api/commandes/' + id);
-  },
-
-  async createCommande(data) {
-    return this.fetch('/api/commandes', {
+  async createMouvement(data) {
+    return this.fetch('/api/mouvements', {
       method: 'POST',
       body: JSON.stringify(data)
     });
   },
 
-  async updateCommande(id, data) {
-    return this.fetch('/api/commandes/' + id, {
-      method: 'PUT',
-      body: JSON.stringify(data)
-    });
-  },
-
-  async changeStatutCommande(id, statut) {
-    return this.fetch('/api/commandes/' + id + '/statut', {
-      method: 'PATCH',
-      body: JSON.stringify({ statut })
-    });
-  },
-
-  async deleteCommande(id) {
-    return this.fetch('/api/commandes/' + id, {
-      method: 'DELETE'
-    });
-  },
 
   // Rapports
   getRapportStockUrl() { return '/api/rapports/stock'; },
@@ -234,6 +198,19 @@ const API = {
     return '/api/rapports/sorties-agence' + (qs ? '?' + qs : '');
   },
   getRapportStockPdfUrl() { return '/api/rapports/stock-pdf'; },
+
+  // Centre de rapports V2
+  async getRapportMeta() {
+    return this.fetch('/api/rapports/v2/meta');
+  },
+  async getRapportV2(slug, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/rapports/v2/' + slug + (qs ? '?' + qs : ''));
+  },
+  getRapportV2Url(slug, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return '/api/rapports/v2/' + slug + (qs ? '?' + qs : '');
+  },
 
   // Sauvegarde de la base (admin)
   async downloadBackup() {
@@ -366,7 +343,7 @@ const API = {
     });
   },
 
-  // Entrees fournisseur
+  // Entrees
   async getEntrees(params) {
     var qs = new URLSearchParams(params).toString();
     return this.fetch('/api/entrees' + (qs ? '?' + qs : ''));

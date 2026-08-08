@@ -50,7 +50,6 @@ app.use('/api/articles', require('./routes/articles'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/mouvements', require('./routes/mouvements'));
 app.use('/api/fournisseurs', require('./routes/fournisseurs'));
-app.use('/api/commandes', require('./routes/commandes'));
 app.use('/api/rapports', require('./routes/rapports'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/localites', require('./routes/localites'));

@@ -187,7 +187,7 @@ var Entrees = {
     for (var k = 0; k < this._lignes.length; k++) {
       var l = this._lignes[k];
       var showNum = l.article_type === 'numerote' ? 'flex' : 'none';
-      h += '<div class="commande-ligne" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
+      h += '<div class="ligne-article" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
         '<div class="art-ac" data-idx="' + k + '"></div>' +
         '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">' +
         '<input type="number" class="form-input qte-entree" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px;width:90px">' +

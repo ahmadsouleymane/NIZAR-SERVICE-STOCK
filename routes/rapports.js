@@ -276,4 +276,377 @@ router.get('/stock-pdf', authenticate, (req, res) => {
   generateStockPDF(articles, res);
 });
 
+// =====================================================================
+// V2 — Centre de rapports (moteur services/rapports.js)
+// =====================================================================
+const R = require('../services/rapports');
+
+const T = (header, key, width) => ({ header, key, width });
+const N = (header, key, width) => ({ header, key, width, numFmt: '#,##0', align: 'right' });
+const F = (header, key, width) => ({ header, key, width, numFmt: '#,##0', align: 'right' });
+
+const DIM_LABEL = {
+  jour: 'Jour', mois: 'Mois', article: 'Article', categorie: 'Catégorie',
+  localite: 'Agence', fournisseur: 'Fournisseur', type: 'Type',
+  utilisateur: 'Utilisateur', unite: 'Unité', statut: 'Statut'
+};
+const dimHeader = gb => DIM_LABEL[gb] || 'Libellé';
+
+const wrap = fn => (req, res, next) => {
+  try {
+    const p = fn(req, res);
+    if (p && typeof p.catch === 'function') {
+      p.catch(err => {
+        if (err instanceof R.HttpError) return res.status(err.status).json({ error: err.message });
+        next(err);
+      });
+    }
+  } catch (err) {
+    if (err instanceof R.HttpError) return res.status(err.status).json({ error: err.message });
+    next(err);
+  }
+};
+
+// Références pour la barre de filtres (indépendantes des routes fournisseurs/commandes)
+router.get('/v2/meta', authenticate, (req, res) => {
+  res.json(R.getMeta(req.db));
+});
+
+// Ventilation du stock par dimension
+router.get('/v2/ventilation-stock', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'categorie';
+  const rows = R.ventilationStock(req.db, { ...opts, group_by: gb });
+  const totals = { libelle: 'TOTAL', ...R.stockTotals(rows) };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 28),
+    N('Articles', 'nb_articles', 12),
+    N('Stock', 'stock_actuel', 14),
+    F('Valeur (FCFA)', 'valeur', 18),
+    N('Ruptures', 'nb_ruptures', 12),
+    N('Alertes', 'nb_alertes', 12)
+  ];
+  R.respond(req, res, {
+    slug: 'ventilation-stock', titre: 'Ventilation du stock — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Mouvements détaillés, regroupables par jour/mois/article/catégorie/agence/fournisseur/type/utilisateur
+router.get('/v2/mouvements', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'mois';
+  const rows = R.aggregateMouvements(req.db, { ...opts, group_by: gb });
+  const totals = { libelle: 'TOTAL', ...R.movementTotals(rows) };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 24),
+    N('Mouvements', 'nb', 12),
+    N('Entrées', 'entrees', 12),
+    N('Sorties', 'sorties', 12),
+    N('Solde', 'solde', 12),
+    F('Valeur entrées (FCFA)', 'valeur_entrees', 20),
+    F('Valeur sorties (FCFA)', 'valeur_sorties', 20),
+    F('Valeur nette (FCFA)', 'valeur', 18)
+  ];
+  R.respond(req, res, {
+    slug: 'mouvements', titre: 'Mouvements détaillés — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Consommation (sorties) par article / mois / agence, top-N possible
+router.get('/v2/consommation', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'article';
+  const rows = R.consommation(req.db, { ...opts, group_by: gb });
+  const totals = {
+    libelle: 'TOTAL',
+    quantite: rows.reduce((s, r) => s + r.quantite, 0),
+    valeur: rows.reduce((s, r) => s + r.valeur, 0),
+    nb_mouvements: rows.reduce((s, r) => s + r.nb_mouvements, 0)
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 30),
+    N('Quantité consommée', 'quantite', 18),
+    F('Valeur (FCFA)', 'valeur', 18),
+    N('Nb mouvements', 'nb_mouvements', 14)
+  ];
+  R.respond(req, res, {
+    slug: 'consommation', titre: 'Consommation — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Sorties par agence : résumé + détail agence × article (export 2 feuilles)
+router.get('/v2/sorties-agence', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const { resume, detail } = R.sortiesAgence(req.db, opts);
+  const totals = {
+    libelle: 'TOTAL',
+    nb_mouvements: resume.reduce((s, r) => s + r.nb_mouvements, 0),
+    quantite: resume.reduce((s, r) => s + r.quantite, 0),
+    valeur: resume.reduce((s, r) => s + r.valeur, 0)
+  };
+  const resumeCols = [
+    T('Agence', 'libelle', 26),
+    N('Mouvements', 'nb_mouvements', 14),
+    N('Quantité', 'quantite', 14),
+    F('Valeur (FCFA)', 'valeur', 20)
+  ];
+  const detailCols = [
+    T('Agence', 'localite', 26), T('Référence', 'reference', 16), T('Article', 'article', 30),
+    T('Unité', 'unite', 10), N('Quantité', 'quantite', 12),
+    F('Prix unitaire (FCFA)', 'prix_unitaire', 20), F('Valeur (FCFA)', 'valeur', 20)
+  ];
+  const format = String(req.query.format || 'json').toLowerCase();
+  if (format === 'xlsx') {
+    const wb = R.buildWorkbook({
+      slug: 'sorties-agence', titre: 'Sorties par agence', sheetName: 'Résumé par agence',
+      columns: resumeCols, rows: resume, totals,
+      extraSheets: [{ name: 'Détail par agence', columns: detailCols, rows: detail }]
+    });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="rapport-sorties-agence-' + R.todayISO() + '.xlsx"');
+    return wb.xlsx.write(res).then(() => res.end());
+  }
+  if (format === 'csv') {
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="rapport-sorties-agence-' + R.todayISO() + '.csv"');
+    return res.send(R.buildCsv(resume, resumeCols));
+  }
+  res.json({
+    meta: { slug: 'sorties-agence', titre: 'Sorties par agence', groupBy: 'localite', periode: opts.debut || opts.fin ? ((opts.debut || 'début') + ' → ' + (opts.fin || "aujourd'hui")) : 'Toute la période' },
+    resume, detail, totals
+  });
+}));
+
+// Entrées fournisseur (fiches d'entrée)
+router.get('/v2/entrees', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'fournisseur';
+  const rows = R.entreesFournisseurs(req.db, { ...opts, group_by: gb });
+  const totals = {
+    libelle: 'TOTAL',
+    nb_fiches: rows.reduce((s, r) => s + r.nb_fiches, 0),
+    quantite: rows.reduce((s, r) => s + r.quantite, 0),
+    valeur: rows.reduce((s, r) => s + r.valeur, 0)
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 28),
+    N('Fiches d\'entrée', 'nb_fiches', 16),
+    N('Quantité', 'quantite', 14),
+    F('Valeur (FCFA)', 'valeur', 18)
+  ];
+  R.respond(req, res, {
+    slug: 'entrees', titre: 'Entrées fournisseur — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Commandes & délais fournisseur
+router.get('/v2/commandes', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'fournisseur';
+  const rows = R.commandes(req.db, { ...opts, group_by: gb });
+  const delai = rows.reduce((s, r) => s + r.delai_moyen_j * r.nb_commandes, 0) / (rows.length || 1);
+  const totals = {
+    libelle: 'TOTAL',
+    nb_commandes: rows.reduce((s, r) => s + r.nb_commandes, 0),
+    quantite: rows.reduce((s, r) => s + r.quantite, 0),
+    delai_moyen_j: Math.round(delai * 10) / 10
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 28),
+    N('Commandes', 'nb_commandes', 14),
+    N('Quantité commandée', 'quantite', 20),
+    N('Délai moyen (j)', 'delai_moyen_j', 16)
+  ];
+  R.respond(req, res, {
+    slug: 'commandes', titre: 'Commandes & délais — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Retours de carnets
+router.get('/v2/retours', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'localite';
+  const rows = R.retours(req.db, { ...opts, group_by: gb });
+  const totals = {
+    libelle: 'TOTAL',
+    nb: rows.reduce((s, r) => s + r.nb, 0),
+    quantite: rows.reduce((s, r) => s + r.quantite, 0),
+    nb_usage: rows.reduce((s, r) => s + r.nb_usage, 0),
+    nb_non_utilise: rows.reduce((s, r) => s + r.nb_non_utilise, 0)
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 26),
+    N('Retours', 'nb', 12),
+    N('Quantité', 'quantite', 14),
+    N('Usage', 'nb_usage', 12),
+    N('Non utilisé', 'nb_non_utilise', 14)
+  ];
+  R.respond(req, res, {
+    slug: 'retours', titre: 'Retours de carnets — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Inventaires & écarts
+router.get('/v2/inventaires', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'article';
+  const rows = R.inventaires(req.db, { ...opts, group_by: gb });
+  const totals = {
+    libelle: 'TOTAL',
+    nb_inventaires: rows.reduce((s, r) => s + r.nb_inventaires, 0),
+    stock_theorique: rows.reduce((s, r) => s + r.stock_theorique, 0),
+    quantite_comptee: rows.reduce((s, r) => s + r.quantite_comptee, 0),
+    ecart: rows.reduce((s, r) => s + r.ecart, 0),
+    valeur_ecart: rows.reduce((s, r) => s + r.valeur_ecart, 0)
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 26),
+    N('Inventaires', 'nb_inventaires', 14),
+    N('Stock théorique', 'stock_theorique', 16),
+    N('Quantité comptée', 'quantite_comptee', 16),
+    N('Écart', 'ecart', 12),
+    F('Écart (FCFA)', 'valeur_ecart', 18)
+  ];
+  R.respond(req, res, {
+    slug: 'inventaires', titre: 'Inventaires & écarts — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Alertes & ruptures (détail)
+router.get('/v2/alertes', authenticate, wrap((req, res) => {
+  const { rows, totals } = R.alertes(req.db);
+  const cols = [
+    T('Référence', 'reference', 16), T('Article', 'nom', 30), T('Catégorie', 'categorie', 22),
+    T('Fournisseur', 'fournisseur', 22), N('Stock', 'stock_actuel', 12), N('Min', 'stock_min', 10),
+    T('Unité', 'unite', 10), F('Valeur (FCFA)', 'valeur', 18), T('Statut', 'statut', 12)
+  ];
+  R.respond(req, res, {
+    slug: 'alertes', titre: 'Alertes & ruptures', columns: cols, rows,
+    totals: { libelle: 'TOTAL', ...totals }
+  });
+}));
+
+// Fiches de réception par agence / statut / mois
+router.get('/v2/fiches-reception', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const gb = opts.group_by || 'localite';
+  const rows = R.fichesReception(req.db, { ...opts, group_by: gb });
+  const totals = {
+    libelle: 'TOTAL',
+    nb_fiches: rows.reduce((s, r) => s + r.nb_fiches, 0),
+    quantite: rows.reduce((s, r) => s + r.quantite, 0),
+    envoyees: rows.reduce((s, r) => s + r.envoyees, 0),
+    signees: rows.reduce((s, r) => s + r.signees, 0),
+    archivees: rows.reduce((s, r) => s + r.archivees, 0)
+  };
+  const cols = [
+    T(dimHeader(gb), 'libelle', 26),
+    N('Fiches', 'nb_fiches', 12),
+    N('Quantité', 'quantite', 14),
+    N('Envoyées', 'envoyees', 12),
+    N('Signées', 'signees', 12),
+    N('Archivées', 'archivees', 12)
+  ];
+  R.respond(req, res, {
+    slug: 'fiches-reception', titre: 'Fiches de réception — ' + dimHeader(gb),
+    groupBy: gb, debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
+// Billets en circulation par agence
+router.get('/v2/series', authenticate, wrap((req, res) => {
+  const rows = R.series(req.db);
+  const totals = {
+    libelle: 'TOTAL',
+    envoyes: rows.reduce((s, r) => s + r.envoyes, 0),
+    retournes_usage: rows.reduce((s, r) => s + r.retournes_usage, 0),
+    retournes_stock: rows.reduce((s, r) => s + r.retournes_stock, 0),
+    en_circulation: rows.reduce((s, r) => s + r.en_circulation, 0)
+  };
+  const cols = [
+    T('Agence', 'libelle', 26),
+    N('Envoyés', 'envoyes', 14),
+    N('Retournés usage', 'retournes_usage', 18),
+    N('Retournés stock', 'retournes_stock', 18),
+    N('En circulation', 'en_circulation', 16)
+  ];
+  R.respond(req, res, {
+    slug: 'series', titre: 'Billets en circulation par agence', columns: cols, rows, totals
+  });
+}));
+
+// Articles dormants (stock non nul, sans mouvement depuis N jours)
+router.get('/v2/dormants', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const { rows, totals } = R.dormants(req.db, opts);
+  const cols = [
+    T('Référence', 'reference', 16), T('Article', 'nom', 30), T('Catégorie', 'categorie', 22),
+    N('Stock', 'stock_actuel', 12), T('Unité', 'unite', 10), F('Valeur (FCFA)', 'valeur', 18),
+    T('Dernier mouvement', 'dernier_mouvement', 20)
+  ];
+  R.respond(req, res, {
+    slug: 'dormants', titre: 'Articles dormants (' + (opts.stock_min_jours || 30) + ' jours)',
+    debut: opts.debut, fin: opts.fin, columns: cols, rows,
+    totals: { libelle: 'TOTAL', nb: totals.nb, valeur: totals.valeur, seuil_jours: totals.seuil_jours }
+  });
+}));
+
+// Jours de couverture (stock / conso journalière moyenne)
+router.get('/v2/couverture', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const { rows, totals } = R.couverture(req.db, opts);
+  const cols = [
+    T('Article', 'libelle', 30), T('Référence', 'reference', 16), T('Catégorie', 'categorie', 22),
+    N('Stock', 'stock_actuel', 12), N('Sorties fenêtre', 'sorties_fenetre', 16),
+    N('Jours de couverture', 'jours_couverture', 20), F('Valeur (FCFA)', 'valeur', 18)
+  ];
+  R.respond(req, res, {
+    slug: 'couverture', titre: 'Jours de couverture (fenêtre ' + (opts.jours || 90) + ' j)',
+    debut: opts.debut, fin: opts.fin, columns: cols, rows,
+    totals: { libelle: 'TOTAL', nb: rows.length, fenetre_jours: totals.fenetre_jours }
+  });
+}));
+
+// Top articles par valeur de stock
+router.get('/v2/top-valeur', authenticate, wrap((req, res) => {
+  const { rows, totals } = R.topValeur(req.db);
+  const cols = [
+    T('Référence', 'reference', 16), T('Article', 'nom', 30), T('Catégorie', 'categorie', 22),
+    N('Stock', 'stock_actuel', 12), F('Prix unitaire (FCFA)', 'prix_unitaire', 20), F('Valeur (FCFA)', 'valeur', 18)
+  ];
+  R.respond(req, res, {
+    slug: 'top-valeur', titre: 'Top 10 — articles par valeur de stock', columns: cols, rows,
+    totals: { libelle: 'TOTAL', nb: rows.length, valeur_top: totals.valeur_top, valeur_totale: totals.valeur_totale }
+  });
+}));
+
+// Évolution de la valeur du stock dans le temps (entrées / sorties par mois)
+router.get('/v2/valeur-evolution', authenticate, wrap((req, res) => {
+  const opts = R.sanitizeQuery(req.query);
+  const rows = R.valeurEvolution(req.db, opts);
+  const totals = {
+    libelle: 'TOTAL',
+    valeur_entrees: rows.reduce((s, r) => s + (r.valeur_entrees || 0), 0),
+    valeur_sorties: rows.reduce((s, r) => s + (r.valeur_sorties || 0), 0),
+    solde_valeur: rows.reduce((s, r) => s + (r.solde_valeur || 0), 0)
+  };
+  const cols = [
+    T('Mois', 'libelle', 14),
+    F('Valeur entrées (FCFA)', 'valeur_entrees', 22),
+    F('Valeur sorties (FCFA)', 'valeur_sorties', 22),
+    F('Solde valeur (FCFA)', 'solde_valeur', 20)
+  ];
+  R.respond(req, res, {
+    slug: 'valeur-evolution', titre: 'Évolution de la valeur du stock', groupBy: 'mois',
+    debut: opts.debut, fin: opts.fin, columns: cols, rows, totals
+  });
+}));
+
 module.exports = router;

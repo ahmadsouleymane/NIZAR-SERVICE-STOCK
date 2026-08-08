@@ -24,7 +24,6 @@ var Dashboard = {
       { label: 'Total articles', value: kpi.totalArticles, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>', cls: '' },
       { label: 'Alertes stock bas', value: kpi.alertesStock, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', cls: kpi.alertesStock > 0 ? 'danger' : 'success' },
       { label: 'Mouvements du jour', value: kpi.mouvementsJour, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>', cls: '' },
-      { label: 'Commandes en cours', value: kpi.commandesEnCours, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>', cls: kpi.commandesEnCours > 0 ? 'warning' : '' },
       { label: 'Valeur du stock', value: UI.formatPrice(kpi.valeurStock), icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>', cls: '' }
     ];
 
@@ -68,7 +67,7 @@ var Dashboard = {
     var el = document.getElementById('recent-entrees');
     if (!el) return;
     if (!entrees || !entrees.length) {
-      el.innerHTML = UI.renderEmptyState('Aucune entree fournisseur recente');
+      el.innerHTML = UI.renderEmptyState('Aucune entrée récente');
       return;
     }
 
@@ -97,7 +96,7 @@ var Dashboard = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Article</th><th>Référence</th><th>Stock</th><th>Min</th><th>Fournisseur</th><th>Action</th>' +
+      '<th>Article</th><th>Référence</th><th>Stock</th><th>Min</th><th>Fournisseur</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < alertes.length; i++) {
@@ -108,7 +107,6 @@ var Dashboard = {
         '<td>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' ' + a.stock_actuel + ' ' + UI.escapeHtml(UI.uniteLabel(a.unite)) + '</td>' +
         '<td>' + a.stock_min + '</td>' +
         '<td>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</td>' +
-        '<td><a href="#commandes" class="btn btn-primary btn-sm">Commander</a></td>' +
         '</tr>';
     }
     html += '</tbody></table></div>';
