@@ -133,6 +133,7 @@ var Entrees = {
         '<div class="form-group"><label class="form-label">Fournisseur (recherche ou ajout)</label><div id="entree-fourn-ac"></div></div>' +
         '<div class="form-row"><div class="form-group"><label class="form-label">N° bon de livraison</label><input type="text" class="form-input" id="entree-bl" placeholder="Ex: BL-2026-001"></div>' +
         '<div class="form-group"><label class="form-label">N° facture</label><input type="text" class="form-input" id="entree-facture" placeholder="Ex: FAC-2026-001"></div></div>' +
+        '<div class="form-group"><label class="form-label">N° fiche de besoin (optionnel)</label><input type="text" class="form-input" id="entree-fb" placeholder="Ex: FB-2608-001"></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-entree"></div>' +
         '<div class="mt-md mb-sm"><strong>Documents requis (obligatoires)</strong><p class="text-sm text-muted">Photos du bon de livraison et de la facture — aucune validation possible sans les deux.</p></div>' +
@@ -141,6 +142,8 @@ var Entrees = {
         '<strong class="text-sm">Bon de livraison</strong>' +
         '<div id="preview-bl" style="margin:8px 0"><span class="text-muted text-sm">Aucune photo</span></div>' +
         '<button class="btn btn-sm btn-secondary" id="btn-photo-bl">Prendre une photo</button>' +
+        '<div class="text-sm text-muted" style="margin:4px 0">— ou, si le fournisseur n\'en a pas fourni —</div>' +
+        '<button class="btn btn-sm btn-accent" id="btn-generer-bl" style="background:var(--color-accent);color:#fff">Generer le bon de livraison</button>' +
         '</div>' +
         '<div style="flex:1;min-width:140px;border:1px dashed var(--color-border);border-radius:10px;padding:10px;text-align:center">' +
         '<strong class="text-sm">Facture</strong>' +
@@ -155,6 +158,7 @@ var Entrees = {
 
       document.getElementById('btn-photo-bl').addEventListener('click', function() { self._pickPhoto('bl', 'Bon de livraison'); });
       document.getElementById('btn-photo-facture').addEventListener('click', function() { self._pickPhoto('facture', 'Facture'); });
+      document.getElementById('btn-generer-bl').addEventListener('click', function() { self._genererBonLivraison(); });
       self._refreshValiderBtn();
 
       self._fournAC = UI.autocomplete(document.getElementById('entree-fourn-ac'), {
@@ -324,6 +328,37 @@ var Entrees = {
     }).catch(function(err) { UI.toast(err.message, 'error'); });
   },
 
+  // Cree le brouillon d'entree a partir du formulaire courant (partage par _pickPhoto et
+  // _genererBonLivraison — les deux peuvent etre le premier declencheur de la creation).
+  _ensureDraft: function(cb) {
+    var self = this;
+    if (self._draftId) { cb(self._draftId); return; }
+
+    var arts = [];
+    for (var i = 0; i < self._lignes.length; i++) {
+      var l = self._lignes[i];
+      if (!l.article_id) { UI.toast('Ajoutez d\'abord les articles.', 'error'); return; }
+      arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
+    }
+    if (!arts.length) { UI.toast('Ajoutez d\'abord les articles.', 'error'); return; }
+
+    var fourn = self._fournAC ? self._fournAC.value() : null;
+    var blInput = document.getElementById('entree-bl');
+    var factInput = document.getElementById('entree-facture');
+    var fbInput = document.getElementById('entree-fb');
+    var numeroBL = blInput ? blInput.value.trim() || null : null;
+    var numeroFact = factInput ? factInput.value.trim() || null : null;
+    var numeroFB = fbInput ? fbInput.value.trim() || null : null;
+
+    API.createEntree({ fournisseur_id: fourn ? fourn.id : null, numero_bl: numeroBL, numero_facture: numeroFact, numero_fiche_besoin: numeroFB, articles: arts })
+      .then(function(data) {
+        self._draftId = data.fiche.id;
+        self._draftRef = data.fiche.reference;
+        cb(self._draftId);
+      })
+      .catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
   _pickPhoto: function(type, label) {
     var self = this;
     // Photo obligatoire via la camera du telephone (bloque sur ordinateur)
@@ -350,28 +385,25 @@ var Entrees = {
       // Brouillon deja cree (reprise ou 2e photo) : uploader directement
       if (self._draftId) { doUpload(self._draftId); return; }
 
-      // Sinon : verifier les articles puis creer le brouillon
-      var arts = [];
-      for (var i = 0; i < self._lignes.length; i++) {
-        var l = self._lignes[i];
-        if (!l.article_id) { UI.toast('Ajoutez d\'abord les articles avant de prendre les photos.', 'error'); return; }
-        arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
-      }
-      if (!arts.length) { UI.toast('Ajoutez d\'abord les articles avant de prendre les photos.', 'error'); return; }
+      // Sinon : creer le brouillon (partage avec le bouton « Generer le bon de livraison »)
+      self._ensureDraft(function(id) { doUpload(id); });
+    });
+  },
 
-      var fourn = self._fournAC ? self._fournAC.value() : null;
-      var blInput = document.getElementById('entree-bl');
-      var factInput = document.getElementById('entree-facture');
-      var numeroBL = blInput ? blInput.value.trim() || null : null;
-      var numeroFact = factInput ? factInput.value.trim() || null : null;
-
-      API.createEntree({ fournisseur_id: fourn ? fourn.id : null, numero_bl: numeroBL, numero_facture: numeroFact, articles: arts })
-        .then(function(data) {
-          self._draftId = data.fiche.id;
-          self._draftRef = data.fiche.reference;
-          doUpload(self._draftId);
-        })
-        .catch(function(err) { UI.toast(err.message, 'error'); });
+  _genererBonLivraison: function() {
+    var self = this;
+    self._ensureDraft(function(id) {
+      API.genererBonLivraison(id).then(function(data) {
+        if (data && data.error) { UI.toast(data.error, 'error'); return; }
+        self._photosDone.bl = true;
+        var preview = document.getElementById('preview-bl');
+        if (preview) {
+          preview.innerHTML = '<span class="badge badge-success">Genere</span><br>' +
+            '<a href="' + UI.escapeHtml(API.getEntreePdfUrl(id)) + '" target="_blank" class="text-sm">Voir le PDF</a>';
+        }
+        self._refreshValiderBtn();
+        UI.toast('Bon de livraison genere.', 'success');
+      }).catch(function(err) { UI.toast(err.message, 'error'); });
     });
   },
 
@@ -391,7 +423,7 @@ var Entrees = {
     var self = this;
     API.getEntree(id).then(function(data) {
       var f = data.fiche;
-      var hasBL = (data.photos || []).some(function(p) { return p.type === 'bl'; });
+      var hasBL = (data.photos || []).some(function(p) { return p.type === 'bl'; }) || !!f.fichier_path;
       var hasFacture = (data.photos || []).some(function(p) { return p.type === 'facture'; });
 
       self._draftId = id;
@@ -406,6 +438,8 @@ var Entrees = {
         '<strong class="text-sm">Bon de livraison</strong>' +
         '<div id="preview-bl" style="margin:8px 0">' + (hasBL ? '<span class="badge badge-success">Photo BL présente</span>' : '<span class="text-muted text-sm">Aucune photo</span>') + '</div>' +
         '<button class="btn btn-sm btn-secondary" id="btn-photo-bl">' + (hasBL ? 'Remplacer' : 'Prendre une photo') + '</button>' +
+        '<div class="text-sm text-muted" style="margin:4px 0">— ou —</div>' +
+        '<button class="btn btn-sm btn-accent" id="btn-generer-bl" style="background:var(--color-accent);color:#fff">Generer le bon de livraison</button>' +
         '</div>' +
         '<div style="flex:1;min-width:140px;border:1px dashed var(--color-border);border-radius:10px;padding:10px;text-align:center">' +
         '<strong class="text-sm">Facture</strong>' +
@@ -420,6 +454,7 @@ var Entrees = {
 
       document.getElementById('btn-photo-bl').addEventListener('click', function() { self._pickPhoto('bl', 'Bon de livraison'); });
       document.getElementById('btn-photo-facture').addEventListener('click', function() { self._pickPhoto('facture', 'Facture'); });
+      document.getElementById('btn-generer-bl').addEventListener('click', function() { self._genererBonLivraison(); });
       self._refreshValiderBtn();
     }).catch(function(err) { UI.toast(err.message, 'error'); });
   },
