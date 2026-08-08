@@ -32,7 +32,7 @@ var Billets = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Article</th><th>Émis</th><th>Envoyé</th><th>Retourné usage</th><th>Retourné stock</th><th>En stock</th><th>En circulation</th>' +
+      '<th>Article</th><th>Émis</th><th>Envoyé</th><th>Usage</th><th>Retour stock</th><th>En stock</th><th>En circ.</th><th>Dernier envoi</th><th>Localités</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < billets.length; i++) {
@@ -47,6 +47,8 @@ var Billets = {
         '<td>' + (b.total_retour_stock || 0) + '</td>' +
         '<td>' + UI.renderStockBadge(b.stock_actuel, b.stock_min) + ' <strong>' + b.stock_actuel + '</strong></td>' +
         '<td><span class="' + circCls + '" style="font-weight:700">' + circulation + '</span></td>' +
+        '<td class="text-sm">' + UI.formatDate(b.dernier_envoi) + '</td>' +
+        '<td class="text-sm">' + UI.escapeHtml(b.localites_envoyees || '-') + '</td>' +
         '</tr>';
     }
     html += '</tbody></table></div>';

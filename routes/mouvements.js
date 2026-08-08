@@ -23,11 +23,15 @@ router.get('/', authenticate, (req, res) => {
 
   const mouvements = db.prepare(`
     SELECT m.*, a.nom as article_nom, a.reference as article_reference,
-           u.username, f.nom as fournisseur_nom
+           u.username, f.nom as fournisseur_nom,
+           l.nom as localite_nom, fr.reference as fiche_reference,
+           fr.statut as fiche_statut
     FROM mouvements m
     LEFT JOIN articles a ON m.article_id = a.id
     LEFT JOIN users u ON m.user_id = u.id
     LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    LEFT JOIN fiches_reception fr ON m.fiche_id = fr.id
     ${whereClause}
     ORDER BY m.id DESC
     LIMIT ? OFFSET ?

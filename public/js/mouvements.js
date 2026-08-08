@@ -89,18 +89,22 @@ var Mouvements = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Date</th><th>Article</th><th>Type</th><th>Qté</th><th>Demandeur</th><th>Fournisseur</th><th>Saisi par</th>' +
+      '<th>Date</th><th>Article</th><th>Type</th><th>Qté</th><th>N° début</th><th>N° fin</th><th>Localité</th><th>Motif</th><th>Saisi par</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < mvts.length; i++) {
       var m = mvts[i];
+      var localite = m.localite_nom || '-';
+      if (m.fiche_reference) localite += ' <span class=\"text-sm text-muted\">(' + UI.escapeHtml(m.fiche_reference) + ')</span>';
       html += '<tr>' +
         '<td>' + UI.formatDate(m.date) + '</td>' +
         '<td><strong>' + UI.escapeHtml(m.article_nom || '-') + '</strong><br><span class="text-sm text-muted">' + UI.escapeHtml(m.article_reference || '') + '</span></td>' +
         '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entrée' : 'Sortie') + '</span></td>' +
         '<td><strong>' + m.quantite + '</strong></td>' +
-        '<td>' + UI.escapeHtml(m.demandeur || '-') + '</td>' +
-        '<td>' + UI.escapeHtml(m.fournisseur_nom || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(m.numero_debut || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(m.numero_fin || '-') + '</td>' +
+        '<td>' + localite + '</td>' +
+        '<td class="text-sm">' + UI.escapeHtml(m.motif || '-') + '</td>' +
         '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
         '</tr>';
     }
