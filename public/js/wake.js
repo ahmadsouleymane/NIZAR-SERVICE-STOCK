@@ -49,6 +49,26 @@ var WakeManager = {
     if (this._overlay) { this._overlay.remove(); this._overlay = null; }
   },
 
+  // Écran de chargement simple pendant qu'une requête attend le réveil du serveur.
+  _waitEl: null,
+  showWait: function(msg) {
+    if (this._waitEl) return;
+    var o = document.createElement('div');
+    o.id = 'wait-overlay';
+    o.className = 'wake-overlay';
+    o.innerHTML =
+      '<div class="wake-card">' +
+        '<div class="wake-spinner"></div>' +
+        '<h2>' + (msg || 'En attente du serveur…') + '</h2>' +
+        '<p>L\'application se reconnecte, un instant.</p>' +
+      '</div>';
+    document.body.appendChild(o);
+    this._waitEl = o;
+  },
+  hideWait: function() {
+    if (this._waitEl) { this._waitEl.remove(); this._waitEl = null; }
+  },
+
   _retryNow: function() {
     // Réévalue immédiatement l'état (le serveur a peut-être fini de démarrer)
     var cb = this._pendingDone;

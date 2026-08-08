@@ -29,7 +29,17 @@ const API = {
 
   async fetch(url, options = {}) {
     let networkRetry = 0;
+    let slowTimer = null;
+    // Écran de chargement simple si la requête traîne (réveil du serveur) :
+    // Render garde la requête ~1 min pendant le cold start avant de répondre.
+    const stopWait = () => {
+      if (slowTimer) { clearTimeout(slowTimer); slowTimer = null; }
+      WakeManager.hideWait();
+    };
     for (;;) {
+      if (!slowTimer) {
+        slowTimer = setTimeout(function() { WakeManager.showWait('Connexion au serveur…'); }, 6000);
+      }
       try {
         const res = await fetch(url, {
           headers: this._headers(),
@@ -37,6 +47,7 @@ const API = {
         });
 
         if (res.status === 401) {
+          stopWait();
           this.clearToken();
           window.location.hash = '#login';
           throw new Error('Session expirée. Veuillez vous reconnecter.');
@@ -45,22 +56,29 @@ const API = {
         // Pour les exports Excel (blob)
         const ct = res.headers.get('content-type') || '';
         if (ct.includes('spreadsheet') || ct.includes('officedocument')) {
+          stopWait();
           return res.blob();
         }
 
         const data = await res.json();
 
         if (!res.ok) {
+          stopWait();
           throw new Error(data.error || 'Erreur ' + res.status);
         }
 
+        stopWait();
         return data;
       } catch (err) {
+        stopWait();
         // Réseau injoignable : le back-end dort peut-être (mise en veille Render).
-        // On attend son réveil silencieusement puis on réessaie une fois.
+        // On affiche un écran de chargement simple, on attend son réveil, puis on
+        // réessaie une fois.
         if (err && err.message === 'Failed to fetch' && networkRetry === 0) {
           networkRetry++;
+          WakeManager.showWait('Connexion au serveur…');
           try { await WakeManager.waitReady(2500, 75000); } catch (e) { /* ignoré */ }
+          WakeManager.hideWait();
           continue;
         }
         if (err && err.message === 'Failed to fetch') {
