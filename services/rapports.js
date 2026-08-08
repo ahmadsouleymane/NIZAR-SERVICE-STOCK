@@ -392,7 +392,7 @@ function alertes(db) {
 // Fiches de réception par agence / statut / mois
 function fichesReception(db, opts) {
   const dim = opts.group_by === 'statut'
-    ? { label: 'Statut', select: "CASE fr.statut WHEN 'brouillon' THEN 'Brouillon' WHEN 'envoyee' THEN 'Envoyée' WHEN 'signee' THEN 'Signée' ELSE 'Archivée' END AS libelle", group: "fr.statut", order: "libelle ASC" }
+    ? { label: 'Statut', select: "CASE fr.statut WHEN 'brouillon' THEN 'Brouillon' WHEN 'envoyee' THEN 'Envoyée' WHEN 'retournee' THEN 'Retournée' ELSE 'Archivée' END AS libelle", group: "fr.statut", order: "libelle ASC" }
     : opts.group_by === 'mois'
     ? { label: 'Mois', select: "strftime('%Y-%m', fr.date_creation) AS libelle", group: "strftime('%Y-%m', fr.date_creation)", order: "libelle ASC" }
     : { label: 'Agence', select: "COALESCE(l.nom,'(sans agence)') AS libelle", group: "COALESCE(l.nom,'(sans agence)')", order: "nb_fiches DESC" };

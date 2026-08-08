@@ -63,7 +63,7 @@ router.get('/:id', authenticate, (req, res) => {
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
   const lignes = db.prepare(`
-    SELECT fra.*, a.nom as article_nom, a.reference, a.unite, a.type_article
+    SELECT fra.*, a.nom as article_nom, a.reference, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite, a.type_article
     FROM fiche_reception_articles fra
     LEFT JOIN articles a ON fra.article_id = a.id
     WHERE fra.fiche_id = ?
@@ -111,8 +111,8 @@ router.post('/', authenticate, async (req, res) => {
     db.prepare('UPDATE fiches_reception SET numero_facture = ? WHERE id = ?').run(numeroFacture, ficheId);
 
     const insertLigne = db.prepare(`
-      INSERT INTO fiche_reception_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO fiche_reception_articles (fiche_id, article_id, quantite, unite, numero_debut, numero_fin, observation)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `);
     const insertMvt = db.prepare(`
       INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, demandeur, date)
@@ -125,9 +125,8 @@ router.post('/', authenticate, async (req, res) => {
     for (const art of articles) {
       const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
       if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
-      if (article.stock_actuel < art.quantite) {
-        throw new Error('Stock insuffisant pour ' + article.nom + ' (disponible: ' + article.stock_actuel + ' ' + article.unite + ')');
-      }
+      // Pas de contrôle de stock : le gestionnaire enregistre les sorties même si le
+      // stock théorique est à 0 (le stock réel est géré à part).
 
       if (article.type_article === 'numerote') {
         if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
@@ -138,7 +137,8 @@ router.post('/', authenticate, async (req, res) => {
         recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'sortie', ficheId);
       }
 
-      insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
+      const unite = (art.unite || '').trim() || (article.unite || '').trim();
+      insertLigne.run(ficheId, art.article_id, art.quantite, unite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
       insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, null);
       updateStock.run(art.quantite, art.article_id);
     }
@@ -154,7 +154,7 @@ router.post('/', authenticate, async (req, res) => {
     `).get(ficheId);
 
     const lignes = db.prepare(`
-      SELECT fra.*, a.nom as article_nom, a.unite
+      SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
       FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
     `).all(ficheId);
 
@@ -191,7 +191,7 @@ router.get('/:id/pdf', authenticate, (req, res) => {
 
   // Sinon regenerer le PDF
   const lignes = db.prepare(`
-    SELECT fra.*, a.nom as article_nom, a.unite
+    SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
     FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
   `).all(req.params.id);
 
@@ -209,36 +209,46 @@ router.get('/:id/pdf', authenticate, (req, res) => {
     .catch(err => res.status(500).json({ error: 'Erreur generation PDF: ' + err.message }));
 });
 
-// POST /api/fiches/:id/imprimer — impression A4 + archivage automatique
+// POST /api/fiches/:id/imprimer — impression A4 (N'archive PAS : le statut suit le
+// pipeline envoye -> retourne (photo) -> archive, décidé par le gestionnaire).
 router.post('/:id/imprimer', authenticate, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
-
-  // Le PDF n'est PAS regenere ici : il est deja sur disque (fichier_path).
-  // L'archivage se fait une fois l'impression A4 terminee (appele par le front apres print()).
-  if (fiche.statut === 'envoyee' || fiche.statut === 'signee') {
-    db.prepare("UPDATE fiches_reception SET statut = 'archivee', updated_at = datetime('now','localtime') WHERE id = ?").run(req.params.id);
-  }
 
   logAudit(db, req.user.id, req.user.username, 'IMPRIMER_FICHE', fiche.reference || String(req.params.id));
 
   const updated = db.prepare(`
     SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
-  res.json({ fiche: updated, message: 'Fiche archivee apres impression.' });
+  res.json({ fiche: updated, message: 'Fiche prête pour impression.' });
 });
 
-// PATCH /api/fiches/:id/statut — changer statut
+// PATCH /api/fiches/:id/statut — changer statut (pipeline envoye -> retourne -> archive)
 router.patch('/:id/statut', authenticate, (req, res) => {
   const db = req.db;
   const { statut } = req.body;
-  if (!['envoyee', 'signee', 'archivee'].includes(statut)) {
-    return res.status(400).json({ error: 'Statut invalide (envoyee, signee ou archivee).' });
+  if (!['retournee', 'archivee'].includes(statut)) {
+    return res.status(400).json({ error: 'Statut invalide (retournee ou archivee).' });
   }
 
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
+
+  // « retournee » ne peut venir que d'une fiche « envoyee » AVEC photo (le scan EST le retour).
+  if (statut === 'retournee') {
+    if (fiche.statut !== 'envoyee') {
+      return res.status(400).json({ error: 'Seule une fiche envoyée peut être marquée retournée.' });
+    }
+    if (!fiche.scan_path) {
+      return res.status(400).json({ error: 'Photo requise pour le retour : scannez d\'abord le document.' });
+    }
+  }
+
+  // « archivee » ne peut venir que d'une fiche « retournee » (retour avec photo fait).
+  if (statut === 'archivee' && fiche.statut !== 'retournee') {
+    return res.status(400).json({ error: 'Marquez d\'abord le retour (avec photo) avant d\'archiver.' });
+  }
 
   db.prepare('UPDATE fiches_reception SET statut = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(statut, req.params.id);
   logAudit(db, req.user.id, req.user.username, 'STATUT_FICHE', 'Fiche ' + (fiche.reference || req.params.id) + ' -> ' + statut);
@@ -249,25 +259,26 @@ router.patch('/:id/statut', authenticate, (req, res) => {
   res.json({ fiche: updated, message: 'Statut mis a jour : ' + statut });
 });
 
-// POST /api/fiches/:id/upload — uploader le scan signe
+// POST /api/fiches/:id/upload — photo du retour (obligatoire) : marque la fiche « retournee »
 router.post('/:id/upload', authenticate, upload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
-  if (!req.file) return res.status(400).json({ error: 'Fichier scan requis.' });
+  if (!req.file) return res.status(400).json({ error: 'Photo du retour requise.' });
+  if (fiche.statut === 'archivee') return res.status(400).json({ error: 'Fiche déjà archivée.' });
 
   const scanPath = '/uploads/' + req.file.filename;
-  // Le PDF original (fichier_path) reste intact et re-imprimable a volonte ;
-  // le scan signe est archive separement dans scan_path.
-  db.prepare('UPDATE fiches_reception SET scan_path = ?, statut = \'archivee\', updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
+  // La photo remplace la signature : la fiche passe en « retournee ».
+  // Le PDF original (fichier_path) reste intact et re-imprimable a volonte.
+  db.prepare('UPDATE fiches_reception SET scan_path = ?, statut = \'retournee\', updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
     .run(scanPath, req.params.id);
-  logAudit(db, req.user.id, req.user.username, 'SCAN_FICHE', 'Scan signe archive pour ' + (fiche.reference || req.params.id));
+  logAudit(db, req.user.id, req.user.username, 'SCAN_FICHE', 'Photo du retour enregistree pour ' + (fiche.reference || req.params.id));
 
   const updated = db.prepare(`
     SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
 
-  res.json({ fiche: updated, message: 'Scan uploade et fiche archivee. Le PDF original reste telechargeable.' });
+  res.json({ fiche: updated, message: 'Retour enregistré (photo). La fiche est passée en « retournée ».' });
 });
 
 // DELETE /api/fiches/:id (admin seulement)

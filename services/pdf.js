@@ -96,7 +96,7 @@ function generateFichePDF(fiche, lignes) {
           page.drawText(q, {
             x: 459 - font.widthOfTextAtSize(q, 9.5) / 2, y, size: 9.5, font, color
           });
-          const u = uniteLabel(l.unite);
+          const u = ficheUniteLabel(l.unite);
           page.drawText(u, {
             x: 510 - font.widthOfTextAtSize(u, 9.5) / 2, y, size: 9.5, font, color
           });
@@ -141,6 +141,17 @@ function uniteLabel(u) {
     'flacon': 'Flacon', 'ramette': 'Ramette'
   };
   return map[(u || '').toLowerCase()] || (u || '');
+}
+
+// Libellé d'unité pour la colonne « Unité » de la fiche imprimée.
+// Évite la redondance : si l'unité est vide ou générique (« unite »/« piece »),
+// on n'écrit pas « Unité » dans la colonne « Unité » — on met un tiret.
+function ficheUniteLabel(u) {
+  const s = String(u || '').trim();
+  if (!s) return '-';
+  const generic = ['unite', 'piece', 'unité'];
+  if (generic.indexOf(s.toLowerCase()) !== -1) return '-';
+  return s;
 }
 
 /**

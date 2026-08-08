@@ -402,8 +402,8 @@ var UI = {
   },
 
   renderBadgeStatut: function(statut) {
-    var map = { brouillon: 'badge-neutral', envoyee: 'badge-info', recue: 'badge-success', signee: 'badge-success', archivee: 'badge-neutral', annulee: 'badge-danger' };
-    var labels = { brouillon: 'Brouillon', envoyee: 'Envoyee', recue: 'Recue', signee: 'Signee', archivee: 'Archivee', annulee: 'Annulee' };
+    var map = { brouillon: 'badge-neutral', envoyee: 'badge-info', retournee: 'badge-success', recue: 'badge-success', archivee: 'badge-neutral', annulee: 'badge-danger' };
+    var labels = { brouillon: 'Brouillon', envoyee: 'Envoyée', retournee: 'Retournée', recue: 'Reçue', archivee: 'Archivée', annulee: 'Annulée' };
     return '<span class="badge ' + (map[statut] || 'badge-neutral') + '">' + (labels[statut] || statut) + '</span>';
   },
 

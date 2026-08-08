@@ -66,7 +66,7 @@ function initDB(dbPath) {
       updated_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
-    -- Fiches de reception
+    -- Fiches de reception (pipeline : envoyee -> retournee (photo) -> archivee)
     CREATE TABLE IF NOT EXISTS fiches_reception (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       reference TEXT UNIQUE NOT NULL,
@@ -74,7 +74,7 @@ function initDB(dbPath) {
       date_envoi TEXT,
       localite_id INTEGER NOT NULL REFERENCES localites(id),
       user_id INTEGER REFERENCES users(id),
-      statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'signee', 'archivee')),
+      statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'retournee', 'archivee')),
       notes TEXT,
       destinataire TEXT,
       fichier_path TEXT,
@@ -88,6 +88,7 @@ function initDB(dbPath) {
       fiche_id INTEGER NOT NULL REFERENCES fiches_reception(id) ON DELETE CASCADE,
       article_id INTEGER NOT NULL REFERENCES articles(id),
       quantite INTEGER NOT NULL DEFAULT 1,
+      unite TEXT DEFAULT '',
       numero_debut TEXT,
       numero_fin TEXT,
       observation TEXT
@@ -229,6 +230,42 @@ function initDB(dbPath) {
   ensureColumn(db, 'fiches_reception', 'numero_facture', 'TEXT');
   ensureColumn(db, 'fiches_entree', 'validee', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'fiches_entree', 'articles_json', 'TEXT');
+  // Migration : unité par ligne de sortie (billets en lots de 500/50, etc.)
+  ensureColumn(db, 'fiche_reception_articles', 'unite', "TEXT DEFAULT ''");
+
+  // Migration : nouveau pipeline de statuts (envoyee -> retournee -> archivee).
+  // Si la contrainte CHECK de fiches_reception contient encore « signee » (ancien
+  // pipeline), on recrée la table avec le nouveau schéma (les données sont
+  // conservées ; « signee » devient « retournee »). Idempotent.
+  const ficheSql = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='fiches_reception'").get();
+  if (ficheSql && ficheSql.sql && ficheSql.sql.includes("'signee'")) {
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE fiches_reception_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        reference TEXT UNIQUE NOT NULL,
+        date_creation TEXT DEFAULT (datetime('now','localtime')),
+        date_envoi TEXT,
+        localite_id INTEGER NOT NULL REFERENCES localites(id),
+        user_id INTEGER REFERENCES users(id),
+        statut TEXT NOT NULL DEFAULT 'brouillon' CHECK(statut IN ('brouillon', 'envoyee', 'retournee', 'archivee')),
+        notes TEXT,
+        destinataire TEXT,
+        fichier_path TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime'))
+      );
+      INSERT INTO fiches_reception_new (id, reference, date_creation, date_envoi, localite_id, user_id, statut, notes, destinataire, fichier_path, created_at, updated_at)
+        SELECT id, reference, date_creation, date_envoi, localite_id, user_id,
+               CASE WHEN statut = 'signee' THEN 'retournee' ELSE statut END,
+               notes, destinataire, fichier_path, created_at, updated_at
+        FROM fiches_reception;
+      DROP TABLE fiches_reception;
+      ALTER TABLE fiches_reception_new RENAME TO fiches_reception;
+    `);
+    db.pragma('foreign_keys = ON');
+    console.log('Migration : fiches_reception recrée (pipeline envoyee -> retournee -> archivee).');
+  }
 
   // Migration : restaurer le schema fournisseur/commande (au cas ou une base aurait
   // ete creee sans ces colonnes). Le fournisseur est conserve ; les tables commandes
