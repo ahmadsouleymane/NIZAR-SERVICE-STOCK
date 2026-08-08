@@ -179,6 +179,26 @@ function initDB(dbPath) {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS fiches_besoin (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference TEXT UNIQUE NOT NULL,
+      date_creation TEXT DEFAULT (datetime('now','localtime')),
+      statut TEXT NOT NULL DEFAULT 'creee' CHECK(statut IN ('creee','transmise','revenue','archivee')),
+      notes TEXT,
+      scan_path TEXT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS fiche_besoin_articles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      fiche_id INTEGER NOT NULL REFERENCES fiches_besoin(id) ON DELETE CASCADE,
+      article_id INTEGER NOT NULL REFERENCES articles(id),
+      quantite INTEGER NOT NULL DEFAULT 1,
+      observation TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS series_numeros (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
@@ -232,6 +252,8 @@ function initDB(dbPath) {
   ensureColumn(db, 'fiches_entree', 'articles_json', 'TEXT');
   // Migration : unité par ligne de sortie (billets en lots de 500/50, etc.)
   ensureColumn(db, 'fiche_reception_articles', 'unite', "TEXT DEFAULT ''");
+  ensureColumn(db, 'fiches_entree', 'fichier_path', 'TEXT');
+  ensureColumn(db, 'fiches_entree', 'numero_fiche_besoin', 'TEXT');
 
   // Migration : nouveau pipeline de statuts (envoyee -> retournee -> archivee).
   // Si la contrainte CHECK de fiches_reception contient encore « signee » (ancien
