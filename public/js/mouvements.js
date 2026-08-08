@@ -5,11 +5,6 @@ var Mouvements = {
   _hasMore: true,
 
   render: function(container) {
-    var today = new Date().toISOString().split('T')[0];
-    var lastMonth = new Date();
-    lastMonth.setMonth(lastMonth.getMonth() - 1);
-    var lastMonthStr = lastMonth.toISOString().split('T')[0];
-
     this._offset = 0;
     this._all = [];
     this._hasMore = true;
@@ -20,8 +15,8 @@ var Mouvements = {
       '<h3 class="card-title">Historique des mouvements</h3>' +
       '</div>' +
       '<div class="filter-bar">' +
-      '<input type="date" class="form-input" id="filtre-debut" value="' + lastMonthStr + '" style="min-width:140px">' +
-      '<input type="date" class="form-input" id="filtre-fin" value="' + today + '" style="min-width:140px">' +
+      '<input type="date" class="form-input" id="filtre-debut" placeholder="Du..." style="min-width:140px">' +
+      '<input type="date" class="form-input" id="filtre-fin" placeholder="Au..." style="min-width:140px">' +
       '<select class="form-select" id="filtre-type"><option value="">Tous types</option><option value="entree">Entrées</option><option value="sortie">Sorties</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-refresh">Actualiser</button>' +
       '</div>' +
