@@ -56,10 +56,10 @@ function generateFichePDF(fiche, lignes) {
         const destFull = fiche.localite_nom || '';
 
         // === N° (référence de la fiche) : remplace « 000 » du modele ===
-        // On couvre l'ancien « 000 » par un fond blanc puis on ecrit la reference
-        page.drawRectangle({ x: 293, y: height - 133, width: 42, height: 17, color: rgb(1, 1, 1) });
+        // On couvre UNIQUEMENT l'ancien « 000 » (sans toucher au « ° » de « N° »)
+        page.drawRectangle({ x: 296, y: height - 133, width: 20, height: 15, color: rgb(1, 1, 1) });
         page.drawText(fiche.reference || '', {
-          x: 297, y: base(122, 9.5), size: 9.5, font, color
+          x: 299, y: base(122, 9.5), size: 9.5, font, color
         });
 
         // === DATE / DESTINATION (alignés sur les libellés du modele) ===
@@ -102,12 +102,16 @@ function generateFichePDF(fiche, lignes) {
           });
         }
 
-        // === Masquer les lignes vides restantes (separateurs gris sous la derniere ligne) ===
-        if (filled < ROW_SEPS.length) {
-          for (let i = filled; i < ROW_SEPS.length; i++) {
-            const lineY = ROW_SEPS[i]; // position top-down de la ligne a masquer
-            page.drawRectangle({ x: TABLE_LEFT, y: height - (lineY + 3), width: TABLE_W, height: 6, color: whiteColor });
-          }
+        // === Masquer TOUS les tracés sous la derniere ligne remplie ===
+        // (lignes horizontales ET verticales de la grille vide du modele)
+        if (filled > 0 && filled < ROW_SEPS.length) {
+          const lastRowBottom = ROW_SEPS[filled - 1];              // bas de la derniere ligne remplie (a garder)
+          const gridBottom = ROW_SEPS[ROW_SEPS.length - 1] + 4;    // bas de la grille du modele + marge
+          page.drawRectangle({
+            x: TABLE_LEFT - 2, y: height - gridBottom,
+            width: TABLE_W + 4, height: gridBottom - (lastRowBottom + 1),
+            color: whiteColor
+          });
         }
 
         if (lignes.length > ROW_SEPS.length) {
