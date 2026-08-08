@@ -23,9 +23,11 @@ const LIGHT_GRAY = '#F5F5F5';
 const MEDIUM_GRAY = '#888888';
 
 /**
- * Genere le PDF d'une fiche de reception sur UNE SEULE page A4.
- * Le tableau s'adapte au nombre d'articles (hauteur de ligne calculee) et
- * les signatures restent fixees en bas de page. Aucune page supplementaire.
+ * Genere le PDF d'une fiche de sortie sur UNE SEULE page A4.
+ * Modele repris de « FICHE DE SORTIE.pdf » : logo en haut a gauche, titre
+ * centre, Date/Destination a droite, tableau (Articles / N° Souche / Quantite /
+ * Unite), signatures et note en bas. Pour un carnet, la plage de numeros est
+ * ecrite « debut - fin » dans la colonne N° Souche (jamais entre parentheses).
  * @param {Object} fiche - { reference, numero_facture, date_envoi, date_creation, localite_nom, localite_type, localite_pays, localite_service, destinataire }
  * @param {Array} lignes - [{ article_nom, quantite, numero_debut, numero_fin, unite }]
  * @returns {string} chemin du fichier PDF genere
@@ -35,7 +37,7 @@ function generateFichePDF(fiche, lignes) {
     // Nom de fichier avec suffixe aleatoire : les PDF ne sont pas enumerables sur le reseau
     const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
     const filepath = path.join(OUTPUT_DIR, filename);
-    const doc = new PDFDocument({ size: 'A4', margin: MARGIN });
+    const doc = new PDFDocument({ size: 'A4', margin: 0 });
     const stream = fs.createWriteStream(filepath);
 
     doc.pipe(stream);
@@ -46,151 +48,125 @@ function generateFichePDF(fiche, lignes) {
       var opts = { width: width, ellipsis: true };
       if (align) opts.align = align;
       if (height) opts.height = height;
-      doc.text(String(text === null || text === undefined ? '-' : text), x, y, opts);
+      doc.text(String(text === null || text === undefined ? '' : text), x, y, opts);
     }
 
-    // === EN-TETE : LOGO + TITRE ===
-    const logoSize = 44;
-    let hasLogo = false;
+    const destFull = fiche.localite_nom +
+      (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
+
+    // === LOGO (haut gauche) ===
+    const logoSize = 88;
     try {
       if (fs.existsSync(LOGO_PATH)) {
-        doc.image(LOGO_PATH, MARGIN, MARGIN, { width: logoSize, height: logoSize });
-        hasLogo = true;
+        doc.image(LOGO_PATH, 58, 26, { width: logoSize, height: logoSize });
       }
     } catch (e) { /* logo non disponible */ }
 
-    const titleX = hasLogo ? MARGIN + logoSize + 14 : MARGIN;
+    // === TITRES CENTRES ===
+    doc.font('Helvetica-Bold').fillColor(BLACK);
+    doc.fontSize(15);
+    t('NIZAR TRANSPORT VOYAGEURS', 0, 60, PAGE_W, 'center', 20);
+    doc.fontSize(25);
+    t('BON DE RÉCEPTION', 0, 120, PAGE_W, 'center', 32);
 
-    doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
-    t('NIZAR TRANSPORT VOYAGEUR', titleX, MARGIN + 2, CONTENT_W, 'left', 14);
-    doc.fontSize(17).font('Helvetica-Bold').fillColor(TEAL);
-    t('FICHE DE RECEPTION', titleX, MARGIN + 17, CONTENT_W, 'left', 22);
-
-    const sepY = MARGIN + logoSize + 8;
-    doc.moveTo(MARGIN, sepY).lineTo(PAGE_W - MARGIN, sepY)
-      .strokeColor(TEAL).lineWidth(2).stroke();
+    // Separateur sous le titre
+    doc.moveTo(70, 155).lineTo(PAGE_W - 70, 155)
+      .strokeColor('#D1D5DB').lineWidth(0.8).stroke();
     doc.strokeColor(BLACK).lineWidth(0.5);
 
-    // === BLOC INFORMATIONS ===
-    const infoY = sepY + 14;
-    const infoValX = MARGIN + 100;
-    const rightValX = PAGE_W - MARGIN - 75;
+    // === DATE / DESTINATION (droite) ===
+    doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
+    t('Date : ' + formatDate(fiche.date_envoi || fiche.date_creation), 398, 160, 190, 'left', 14);
+    t('Destination : ' + destFull, 398, 180, 190, 'left', 14);
 
-    doc.fontSize(8).font('Helvetica-Bold').fillColor(BLACK);
-    t('REFERENCE', MARGIN, infoY, 80, 'left', 12);
-    t('DESTINATION', MARGIN, infoY + 19, 80, 'left', 12);
-    t('DATE', PAGE_W - MARGIN - 150, infoY, 70, 'left', 12);
-    t('N° FACTURE', PAGE_W - MARGIN - 150, infoY + 19, 70, 'left', 12);
-    t('DESTINATAIRE', PAGE_W - MARGIN - 150, infoY + 38, 70, 'left', 12);
+    // === TABLEAU DES ARTICLES ===
+    // Colonnes du modele (A4 595.2 x 841.92 pt) — une ligne par article, sans ligne vide
+    const colX = [70.8, 297.4, 429.6, 488.9];
+    const colW = [226.6, 132.2, 59.3, 42];
+    const headers = ['Articles', 'N° Souche', 'Quantité', 'Unité'];
+    const HEADER_H = 17;
+    const tableTop = 210;
 
-    doc.font('Helvetica').fontSize(9);
-    t(fiche.reference, infoValX, infoY, 200, 'left', 14);
-    const destFull = fiche.localite_nom +
-      (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
-    t(destFull, infoValX, infoY + 19, 220, 'left', 14);
-    t(formatDate(fiche.date_envoi || fiche.date_creation), rightValX, infoY, 110, 'left', 14);
-    t(fiche.numero_facture, rightValX, infoY + 19, 110, 'left', 14);
-    t(fiche.destinataire, rightValX, infoY + 38, 110, 'left', 14);
+    // Sous-seing et signatures fixes en bas de page
+    const attestY = 510;
+    const sigY = 630;
+    const noteY = 750;
+    const tableBottom = attestY - 5;
+    const availableTableH = tableBottom - (tableTop + HEADER_H);
+    // Hauteur de ligne : 21 pt comme le modele, reduite si beaucoup d'articles
+    const rowH = lignes.length ? Math.min(21, Math.max(12, Math.floor(availableTableH / lignes.length))) : 21;
 
-    // === TABLEAU DES ARTICLES (tient TOUJOURS sur la page) ===
-    const sigY = PAGE_H - 158; // signatures fixees en bas de page
-    const tableTop = infoY + 60;
-    const availableTableH = sigY - tableTop - 32;
-    const rowH = lignes.length ? Math.max(14, Math.min(21, availableTableH / lignes.length)) : 21;
-
-    const colW = [
-      CONTENT_W * 0.38,  // Article
-      CONTENT_W * 0.18,  // N° debut
-      CONTENT_W * 0.18,  // N° fin
-      CONTENT_W * 0.11,  // Qte
-      CONTENT_W * 0.15   // Unite
-    ];
-    const colX = [
-      MARGIN,
-      MARGIN + colW[0],
-      MARGIN + colW[0] + colW[1],
-      MARGIN + colW[0] + colW[1] + colW[2],
-      MARGIN + colW[0] + colW[1] + colW[2] + colW[3]
-    ];
-    const headers = ['Article', 'N° debut', 'N° fin', 'Qte', 'Unite'];
-    const HEADER_H = 18;
-
-    // En-tete du tableau
-    doc.rect(MARGIN, tableTop, CONTENT_W, HEADER_H).fill(BLACK);
-    doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(8);
+    // En-tete du tableau (fond noir, texte blanc)
+    doc.rect(70.8, tableTop, 460.1, HEADER_H).fill(BLACK);
+    doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(8.5);
     for (let i = 0; i < headers.length; i++) {
-      t(headers[i], colX[i] + 4, tableTop + 4, colW[i] - 8, i >= 3 ? 'center' : 'left', 12);
+      t(headers[i], colX[i] + 5, tableTop + 4, colW[i] - 10, i === 0 ? 'left' : 'center', 12);
     }
     doc.fillColor(BLACK);
 
-    // Lignes (hauteur adaptee ; troncature si vraiment trop de lignes pour rester lisible)
+    // Lignes (hauteur adaptee ; troncature si vraiment trop de lignes)
     let rowY = tableTop + HEADER_H;
     const fontRow = rowH >= 19 ? 8.5 : 7.5;
-    const maxRows = Math.floor(availableTableH / 13);
+    const maxRows = Math.floor(availableTableH / 12);
     let truncated = false;
 
     for (let i = 0; i < lignes.length; i++) {
       if (i >= maxRows) { truncated = true; break; }
       const l = lignes[i];
       if (i % 2 === 0) {
-        doc.rect(MARGIN, rowY, CONTENT_W, rowH).fill(LIGHT_GRAY);
+        doc.rect(70.8, rowY, 460.1, rowH).fill(LIGHT_GRAY);
         doc.fillColor(BLACK);
       }
       doc.font('Helvetica').fontSize(fontRow);
-      t(l.article_nom, colX[0] + 4, rowY + 3, colW[0] - 8, 'left', rowH - 4);
-      t(l.numero_debut, colX[1] + 4, rowY + 3, colW[1] - 8, 'center', rowH - 4);
-      t(l.numero_fin, colX[2] + 4, rowY + 3, colW[2] - 8, 'center', rowH - 4);
-      t(String(l.quantite), colX[3] + 4, rowY + 3, colW[3] - 8, 'center', rowH - 4);
-      t(l.unite || 'piece', colX[4] + 4, rowY + 3, colW[4] - 8, 'center', rowH - 4);
+      t(l.article_nom, colX[0] + 5, rowY + 3, colW[0] - 10, 'left', rowH - 4);
+      // Plage de numeros : « debut - fin » (carnet), sinon un tiret
+      const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
+      t(plage, colX[1] + 5, rowY + 3, colW[1] - 10, 'center', rowH - 4);
+      t(String(l.quantite), colX[2] + 5, rowY + 3, colW[2] - 10, 'center', rowH - 4);
+      t(uniteLabel(l.unite), colX[3] + 5, rowY + 3, colW[3] - 10, 'center', rowH - 4);
       rowY += rowH;
     }
 
     if (truncated) {
       doc.fontSize(7.5).font('Helvetica').fillColor(MEDIUM_GRAY);
-      t('… (' + (lignes.length - maxRows) + ' article(s) supplementaires — liste complete dans le systeme)', MARGIN, rowY + 3, CONTENT_W, 'left', 12);
+      t('… (' + (lignes.length - maxRows) + ' article(s) supplementaires — liste complete dans le systeme)', 70.8, rowY + 3, 460, 'left', 12);
     }
 
-    // === SIGNATURES (fixees en bas, meme page) ===
-    doc.moveTo(MARGIN, sigY - 8).lineTo(PAGE_W - MARGIN, sigY - 8)
-      .strokeColor('#E5E5E5').lineWidth(0.5).stroke();
+    // === SOUS-SEING (attestation de reception) ===
+    doc.font('Helvetica').fillColor(BLACK);
+    doc.fontSize(10);
+    t('Je soussigné, atteste avoir reçu l\'ensemble des articles listés ci-dessus, en bon état apparent et conformes à la demande.', 71, attestY, 460, 'left', 30);
+
+    // === SIGNATURES ===
+    // Gestionnaire de stock (gauche)
+    doc.fontSize(9).font('Helvetica-Bold').fillColor(BLACK);
+    t('GESTIONNAIRE DE STOCK', 71, sigY, 210, 'left', 14);
+    doc.moveTo(71, sigY + 30).lineTo(281, sigY + 30).strokeColor(BLACK).lineWidth(0.5).stroke();
+
+    // Date et signature a la reception (droite)
+    t('DATE ET SIGNATURE À LA RÉCEPTION', 308, sigY, 225, 'left', 14);
+    doc.moveTo(308, sigY + 30).lineTo(533, sigY + 30).strokeColor(BLACK).lineWidth(0.5).stroke();
     doc.strokeColor(BLACK).lineWidth(0.5);
 
-    // Gestionnaire de stock (gauche)
-    doc.moveTo(MARGIN + 30, sigY + 38).lineTo(MARGIN + 220, sigY + 38).stroke();
-    doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
-    t('Gestionnaire de stock', MARGIN + 30, sigY + 44, 190, 'center', 14);
-    doc.fontSize(8).font('Helvetica').fillColor(MEDIUM_GRAY);
-    t('Cachet et signature', MARGIN + 30, sigY + 60, 190, 'center', 12);
-
-    // Chef d'agence (droite)
-    doc.fillColor(BLACK);
-    doc.moveTo(PAGE_W - MARGIN - 220, sigY + 38).lineTo(PAGE_W - MARGIN - 30, sigY + 38).stroke();
-    doc.fontSize(10).font('Helvetica-Bold');
-    t('Chef d\'agence', PAGE_W - MARGIN - 220, sigY + 44, 190, 'center', 14);
-    doc.fontSize(8).font('Helvetica').fillColor(MEDIUM_GRAY);
-    t('Date et signature à la réception', PAGE_W - MARGIN - 220, sigY + 60, 190, 'center', 12);
-
     // === NOTE IMPORTANTE ===
-    doc.fillColor(TEAL);
-    doc.fontSize(8.5).font('Helvetica-Bold');
-    t('NB : A renvoyer au service stock dès réception', MARGIN, sigY + 92, CONTENT_W, 'center', 14);
-
-    // === PIED DE PAGE ===
-    doc.fillColor(MEDIUM_GRAY).fontSize(7).font('Helvetica');
-    t('Nizar Stock — Nizar Transport Voyageur — Document généré le ' +
-      new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }),
-      MARGIN, PAGE_H - 30, CONTENT_W, 'center', 12);
-
-    // === BORDURE (une seule page) ===
-    doc.rect(MARGIN - 5, MARGIN - 5, CONTENT_W + 10, PAGE_H - 2 * MARGIN + 10)
-      .strokeColor(TEAL).lineWidth(0.5).opacity(0.3).stroke();
-    doc.opacity(1);
+    doc.fontSize(9.5).font('Helvetica-Bold').fillColor(BLACK);
+    t('NB : A renvoyer au service stock dès signature', 0, noteY, PAGE_W, 'center', 14);
 
     doc.end();
 
     stream.on('finish', () => resolve('/uploads/' + filename));
     stream.on('error', reject);
   });
+}
+
+// Libelle d'unite pour le PDF (meme rendu que l'UI)
+function uniteLabel(u) {
+  const map = {
+    'unite': 'Unité', 'piece': 'Unité', 'carton': 'Carton', 'lot': 'Lot',
+    'rouleau': 'Rouleau', 'paquet': 'Paquet', 'boite': 'Boîte',
+    'flacon': 'Flacon', 'ramette': 'Ramette'
+  };
+  return map[(u || '').toLowerCase()] || (u || '');
 }
 
 /**

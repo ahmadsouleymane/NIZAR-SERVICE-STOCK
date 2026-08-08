@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Impression fiche de réception — Nizar</title>
+  <title>Fiche de sortie — Nizar</title>
   <style>
     /* ===== Page A4 ===== */
-    @page { size: A4; margin: 12mm; }
+    @page { size: A4; margin: 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
-      font-family: 'Segoe UI', Arial, Helvetica, sans-serif;
+      font-family: Arial, Helvetica, sans-serif;
       color: #111827;
       background: #fff;
       font-size: 12px;
@@ -18,33 +18,35 @@
     .sheet {
       max-width: 190mm;
       margin: 0 auto;
-      padding: 6mm;
-      border: 1.5px solid #0EA5A0;
-      border-radius: 6px;
+      padding: 2mm 4mm;
+      position: relative;
     }
     /* ===== En-tête ===== */
-    .head { display: flex; align-items: center; gap: 10px; border-bottom: 2.5px solid #0EA5A0; padding-bottom: 6px; margin-bottom: 10px; }
-    .head img { height: 46px; width: 46px; object-fit: contain; }
-    .head .brand { flex: 1; }
-    .head h1 { font-size: 15px; color: #111827; letter-spacing: 0.5px; }
-    .head h2 { font-size: 20px; color: #0EA5A0; margin-top: 2px; }
-    /* ===== Informations ===== */
-    .info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; margin-bottom: 10px; font-size: 11.5px; }
-    .info .k { color: #6B7280; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.4px; }
-    .info .v { font-weight: 600; }
+    .head { display: flex; align-items: flex-start; gap: 8px; }
+    .head img { height: 62px; width: 62px; object-fit: contain; margin-top: 4px; }
+    .head .brand { flex: 1; text-align: center; }
+    .head h1 { font-size: 14px; letter-spacing: 0.6px; margin-top: 8px; }
+    .head h2 { font-size: 24px; margin-top: 10px; }
+    .head .sep { border-bottom: 1px solid #D1D5DB; margin: 14px 0 12px; }
+    /* ===== Informations (droite) ===== */
+    .info { margin: 0 0 16px; text-align: right; font-size: 11.5px; }
+    .info .line { margin-bottom: 6px; font-weight: 700; }
     /* ===== Tableau ===== */
-    table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
-    th { background: #111827; color: #fff; text-align: left; padding: 5px 6px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.4px; }
-    td { border-bottom: 1px solid #E5E7EB; padding: 5px 6px; font-size: 11.5px; }
-    tr:nth-child(even) td { background: #F9FAFB; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+    th { background: #111827; color: #fff; text-align: left; padding: 6px 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; }
+    th.c { text-align: center; }
+    td { border-bottom: 1px solid #E5E7EB; padding: 6px 8px; font-size: 11.5px; }
+    td.c { text-align: center; }
+    tr:nth-child(even) td { background: #F3F4F6; }
+    /* ===== Sous-seing (attestation) ===== */
+    .attest { margin-top: 28px; font-size: 11px; }
     /* ===== Signatures ===== */
-    .sign { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 28px; }
-    .sign .box { text-align: center; }
-    .sign .line { border-top: 1px solid #111827; margin-top: 30px; padding-top: 3px; font-weight: 600; font-size: 11px; }
-    .sign .sub { color: #6B7280; font-size: 9.5px; }
+    .sign { display: flex; gap: 40px; margin-top: 48px; }
+    .sign .box { flex: 1; }
+    .sign .label { font-size: 10.5px; font-weight: 700; margin-bottom: 30px; }
+    .sign .line { border-top: 1px solid #111827; }
     /* ===== Note ===== */
-    .note { text-align: center; margin-top: 16px; font-size: 10.5px; font-weight: 700; color: #0EA5A0; }
-    .foot { text-align: center; margin-top: 12px; color: #9CA3AF; font-size: 8.5px; }
+    .note { text-align: center; margin-top: 60px; font-size: 11px; font-weight: 700; }
     /* ===== Controles hors impression ===== */
     .no-print { text-align: center; margin: 14px auto; max-width: 190mm; }
     .no-print button { padding: 8px 18px; font-size: 13px; border: none; border-radius: 8px; background: #0EA5A0; color: #fff; cursor: pointer; }
@@ -52,7 +54,6 @@
     #loading { text-align: center; padding: 40px 0; color: #6B7280; }
     @media print {
       .no-print { display: none !important; }
-      .sheet { border: none; padding: 0; }
     }
   </style>
 </head>
@@ -68,39 +69,49 @@
 
       function esc(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
       function fmtDate(iso) { if (!iso) return '-'; var d = new Date(iso); if (isNaN(d.getTime())) return iso; return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }
+      function uniteLabel(u) {
+        var map = { 'unite':'Unité','piece':'Unité','carton':'Carton','lot':'Lot','rouleau':'Rouleau','paquet':'Paquet','boite':'Boîte','flacon':'Flacon','ramette':'Ramette' };
+        u = String(u || '');
+        return map[u.toLowerCase()] || u;
+      }
 
       function render(fiche, lignes) {
         var dest = esc(fiche.localite_nom || '-') + (fiche.localite_service ? ' — Siège' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
         var rows = '';
         if (!lignes || !lignes.length) {
-          rows = '<tr><td colspan="5">Aucun article</td></tr>';
+          rows = '<tr><td colspan="4">Aucun article</td></tr>';
         } else {
           for (var i = 0; i < lignes.length; i++) {
             var l = lignes[i];
-            rows += '<tr><td>' + esc(l.article_nom || '-') + '</td><td>' + esc(l.numero_debut || '-') + '</td><td>' + esc(l.numero_fin || '-') + '</td><td>' + (l.quantite || '-') + '</td><td>' + esc(l.unite || 'piece') + '</td></tr>';
+            // Plage de numeros : « debut - fin » pour un carnet, sinon un tiret
+            var plage = (l.numero_debut && l.numero_fin) ? esc(String(l.numero_debut)) + ' - ' + esc(String(l.numero_fin)) : '-';
+            rows += '<tr>' +
+              '<td>' + esc(l.article_nom || '-') + '</td>' +
+              '<td class="c">' + plage + '</td>' +
+              '<td class="c">' + (l.quantite || '-') + '</td>' +
+              '<td class="c">' + esc(uniteLabel(l.unite)) + '</td>' +
+              '</tr>';
           }
         }
         document.getElementById('sheet-container').innerHTML =
           '<div class="sheet">' +
             '<div class="head">' +
               '<img src="/logo.jpeg" alt="Nizar">' +
-              '<div class="brand"><h1>NIZAR TRANSPORT VOYAGEUR</h1><h2>FICHE DE RÉCEPTION</h2></div>' +
+              '<div class="brand"><h1>NIZAR TRANSPORT VOYAGEURS</h1><h2>BON DE RÉCEPTION</h2><div class="sep"></div></div>' +
             '</div>' +
             '<div class="info">' +
-              '<div><div class="k">Référence</div><div class="v">' + esc(fiche.reference || '-') + '</div></div>' +
-              '<div><div class="k">N° Facture</div><div class="v">' + esc(fiche.numero_facture || '-') + '</div></div>' +
-              '<div><div class="k">Date</div><div class="v">' + fmtDate(fiche.date_envoi || fiche.date_creation) + '</div></div>' +
-              '<div><div class="k">Destination</div><div class="v">' + dest + '</div></div>' +
-              '<div><div class="k">Destinataire</div><div class="v">' + esc(fiche.destinataire || '-') + '</div></div>' +
-              '<div><div class="k">Documents</div><div class="v">Bon de livraison / Facture</div></div>' +
+              '<div class="line">Date : ' + fmtDate(fiche.date_envoi || fiche.date_creation) + '</div>' +
+              '<div class="line">Destination : ' + dest + '</div>' +
             '</div>' +
-            '<table><thead><tr><th style="width:34%">Article</th><th style="width:18%">N° début</th><th style="width:18%">N° fin</th><th style="width:10%">Qté</th><th style="width:20%">Unité</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+            '<table><thead><tr>' +
+              '<th>Articles</th><th class="c">N° Souche</th><th class="c">Quantité</th><th class="c">Unité</th>' +
+            '</tr></thead><tbody>' + rows + '</tbody></table>' +
+            '<div class="attest">Je soussigné, atteste avoir reçu l\'ensemble des articles listés ci-dessus, en bon état apparent et conformes à la demande.</div>' +
             '<div class="sign">' +
-              '<div class="box"><div class="line">Gestionnaire de stock</div><div class="sub">Cachet et signature</div></div>' +
-              '<div class="box"><div class="line">Chef d\'agence</div><div class="sub">Date et signature à la réception</div></div>' +
+              '<div class="box"><div class="label">GESTIONNAIRE DE STOCK</div><div class="line"></div></div>' +
+              '<div class="box"><div class="label">DATE ET SIGNATURE À LA RÉCEPTION</div><div class="line"></div></div>' +
             '</div>' +
-            '<div class="note">NB : A renvoyer au service stock dès réception</div>' +
-            '<div class="foot">Nizar Stock — Nizar Transport Voyageur — Document généré le ' + new Date().toLocaleDateString('fr-FR') + '</div>' +
+            '<div class="note">NB : A renvoyer au service stock dès signature</div>' +
           '</div>';
         // Impression automatique
         setTimeout(function() { window.print(); }, 350);
