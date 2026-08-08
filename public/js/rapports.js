@@ -328,11 +328,8 @@ var Rapports = {
     var self = this;
     this.container = container;
     ReportUI.applyTheme();
-    var now = new Date();
-    var d30 = new Date();
-    d30.setDate(d30.getDate() - 30);
-    this.state.debut = this._iso(d30);
-    this.state.fin = this._iso(now);
+    this.state.debut = '';
+    this.state.fin = '';
     container.innerHTML = '<div class="report-layout">' + UI.renderSkeleton(6) + '</div>';
 
     API.getRapportMeta().then(function(meta) {
@@ -430,11 +427,8 @@ var Rapports = {
 
   _resetFilters: function() {
     var cfg = this.current;
-    var now = new Date();
-    var d30 = new Date();
-    d30.setDate(d30.getDate() - 30);
-    this.state.debut = this._iso(d30);
-    this.state.fin = this._iso(now);
+    this.state.debut = '';
+    this.state.fin = '';
     this.state.article_id = ''; this.state.categorie_id = ''; this.state.localite_id = '';
     this.state.fournisseur_id = ''; this.state.type = ''; this.state.user_id = '';
     this.state.group_by = cfg.groupBy || '';
