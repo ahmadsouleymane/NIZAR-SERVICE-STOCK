@@ -1,4 +1,8 @@
 // server.js
+// Charge le fichier .env local s'il existe (jamais en production : Render fournit
+// les variables via son tableau de bord, et dotenv ne remplace pas les env existants).
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
