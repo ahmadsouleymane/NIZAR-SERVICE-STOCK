@@ -265,7 +265,7 @@
       fiches_besoin: typeof FichesBesoin !== 'undefined' ? FichesBesoin : null,
       souches: typeof Souches !== 'undefined' ? Souches : null,
       billets: typeof Billets !== 'undefined' ? Billets : null,
-      inventaire: typeof InventaireStock !== 'undefined' ? InventaireStock : null,
+      inventaire: typeof GrandLivre !== 'undefined' ? GrandLivre : null,
       comptage: typeof Inventaire !== 'undefined' ? Inventaire : null,
       rapports: typeof Rapports !== 'undefined' ? Rapports : null,
       parametres: typeof Parametres !== 'undefined' ? Parametres : null
