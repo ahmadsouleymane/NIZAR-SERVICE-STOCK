@@ -413,6 +413,14 @@ const API = {
     return res.json();
   },
 
+  async genererBonLivraison(id) {
+    return this.fetch('/api/entrees/' + id + '/bon-livraison', { method: 'POST' });
+  },
+
+  getEntreePdfUrl(id) {
+    return '/api/entrees/' + id + '/pdf';
+  },
+
   async getSeriesArticle(article_id) {
     return this.fetch('/api/series/' + article_id);
   },
@@ -432,6 +440,16 @@ const API = {
       method: 'POST',
       body: JSON.stringify(data)
     });
+  },
+
+  async getJournal(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/inventaires/journal' + (qs ? '?' + qs : ''));
+  },
+
+  getJournalExportUrl(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return '/api/inventaires/journal/export' + (qs ? '?' + qs : '');
   },
 
   // Import Excel
@@ -465,5 +483,59 @@ const API = {
   // Billets en circulation (articles numérotés)
   async getBillets() {
     return this.fetch('/api/billets');
+  },
+
+  // Anomalies d'import (admin)
+  async getAnomalies() {
+    return this.fetch('/api/mouvements/anomalies');
+  },
+
+  async corrigerNumeroMouvement(id, numero_debut, numero_fin) {
+    return this.fetch('/api/mouvements/' + id + '/numero', {
+      method: 'PATCH',
+      body: JSON.stringify({ numero_debut, numero_fin })
+    });
+  },
+
+  // Fiches de besoin
+  async getFichesBesoin(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/fiches-besoin' + (qs ? '?' + qs : ''));
+  },
+
+  async getFicheBesoin(id) {
+    return this.fetch('/api/fiches-besoin/' + id);
+  },
+
+  async createFicheBesoin(data) {
+    return this.fetch('/api/fiches-besoin', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async changeStatutFicheBesoin(id, statut) {
+    return this.fetch('/api/fiches-besoin/' + id + '/statut', {
+      method: 'PATCH',
+      body: JSON.stringify({ statut })
+    });
+  },
+
+  async uploadScanFicheBesoin(id, file) {
+    var token = this.getToken();
+    var formData = new FormData();
+    formData.append('scan', file);
+    var res = await fetch('/api/fiches-besoin/' + id + '/scan', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    return res.json();
+  },
+
+  async deleteFicheBesoin(id) {
+    return this.fetch('/api/fiches-besoin/' + id, {
+      method: 'DELETE'
+    });
   }
 };
