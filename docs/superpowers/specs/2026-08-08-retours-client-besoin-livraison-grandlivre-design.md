@@ -96,7 +96,9 @@ Deux cas pour une entrée :
 
 ### 3.2 Modèle de données
 
-`fiches_entree` : ajout de la colonne `fichier_path TEXT` (chemin du PDF généré, nullable — miroir de `fiches_reception.fichier_path`).
+`fiches_entree` : ajout de deux colonnes —
+- `fichier_path TEXT` (chemin du PDF généré, nullable — miroir de `fiches_reception.fichier_path`)
+- `numero_fiche_besoin TEXT` (référence libre vers une fiche de besoin, nullable)
 
 ### 3.3 Règles métier
 
