@@ -67,6 +67,7 @@ app.use('/api/localites', require('./routes/localites'));
 app.use('/api/fiches', require('./routes/fiches_reception'));
 app.use('/api/retours', require('./routes/retours'));
 app.use('/api/entrees', require('./routes/entrees'));
+app.use('/api/fiches-besoin', require('./routes/fiches_besoin'));
 app.use('/api/series', require('./routes/series'));
 app.use('/api/inventaires', require('./routes/inventaires'));
 app.use('/api/backup', require('./routes/backup'));
