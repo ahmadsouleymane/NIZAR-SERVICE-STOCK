@@ -1,10 +1,15 @@
-// services/pdf.js — Generation PDF des fiches de reception (une seule page A4)
+// services/pdf.js — Generation PDF des bons de reception et de l'etat du stock
 const PDFDocument = require('pdfkit');
+const { PDFDocument: PDFLibDocument, StandardFonts, rgb } = require('pdf-lib');
 const fs = require('fs');
 const path = require('path');
 
 const LOGO_PATH = path.join(__dirname, '..', 'public', 'logo.jpeg');
 const OUTPUT_DIR = require('./paths').uploadDir;
+
+// Modele officiel « Bon de reception » fourni par le gestionnaire de stock :
+// on charge ce PDF tel quel et on y superpose les donnees (une ligne par article).
+const MODEL_PATH = path.join(__dirname, 'modeles', 'bon-de-reception.pdf');
 
 // S'assurer que le dossier de sortie existe
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -23,139 +28,88 @@ const LIGHT_GRAY = '#F5F5F5';
 const MEDIUM_GRAY = '#888888';
 
 /**
- * Genere le PDF d'une fiche de sortie sur UNE SEULE page A4.
- * Modele repris de « FICHE DE SORTIE.pdf » : logo en haut a gauche, titre
- * centre, Date/Destination a droite, tableau (Articles / N° Souche / Quantite /
- * Unite), signatures et note en bas. Pour un carnet, la plage de numeros est
- * ecrite « debut - fin » dans la colonne N° Souche (jamais entre parentheses).
- * @param {Object} fiche - { reference, numero_facture, date_envoi, date_creation, localite_nom, localite_type, localite_pays, localite_service, destinataire }
+ * Genere le PDF d'un bon de reception en chargeant LE MODELE OFFICIEL
+ * (services/modeles/bon-de-reception.pdf) et en y superposant les donnees :
+ * date, destination, et une ligne par article (Articles / N° Souche / Quantite /
+ * Unite). Le sous-seing, les signatures et la note du modele restent intacts.
+ * @param {Object} fiche - { reference, date_envoi, date_creation, localite_nom, localite_type, localite_pays, localite_service }
  * @param {Array} lignes - [{ article_nom, quantite, numero_debut, numero_fin, unite }]
  * @returns {string} chemin du fichier PDF genere
  */
 function generateFichePDF(fiche, lignes) {
   return new Promise((resolve, reject) => {
-    // Nom de fichier avec suffixe aleatoire : les PDF ne sont pas enumerables sur le reseau
-    const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
-    const filepath = path.join(OUTPUT_DIR, filename);
-    const doc = new PDFDocument({ size: 'A4', margin: 0 });
-    const stream = fs.createWriteStream(filepath);
+    (async () => {
+      try {
+        // Charger le modele officiel
+        const modelBytes = fs.readFileSync(MODEL_PATH);
+        const pdfDoc = await PDFLibDocument.load(modelBytes);
+        const page = pdfDoc.getPage(0);
+        const { height } = page.getSize(); // 841.92 pt pour A4
 
-    doc.pipe(stream);
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const color = rgb(0.12, 0.12, 0.12);
+        const grey = rgb(0.45, 0.45, 0.45);
 
-    // Helper : ecrit un texte en bornant sa hauteur (height + ellipsis) pour que
-    // pdfkit ne cree JAMAIS de page supplementaire, meme si le texte est long.
-    function t(text, x, y, width, align, height) {
-      var opts = { width: width, ellipsis: true };
-      if (align) opts.align = align;
-      if (height) opts.height = height;
-      doc.text(String(text === null || text === undefined ? '' : text), x, y, opts);
-    }
+        // Position du haut de ligne (top-down du modele) -> baseline pdf-lib
+        const base = (topY, size) => height - topY - size * 0.72;
 
-    const destFull = fiche.localite_nom +
-      (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
+        const destFull = fiche.localite_nom +
+          (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
 
-    // === LOGO (haut gauche) ===
-    const logoSize = 88;
-    try {
-      if (fs.existsSync(LOGO_PATH)) {
-        doc.image(LOGO_PATH, 58, 26, { width: logoSize, height: logoSize });
+        // === DATE / DESTINATION (alignés sur les libellés du modele) ===
+        page.drawText(formatDate(fiche.date_envoi || fiche.date_creation), {
+          x: 432, y: base(163, 10), size: 10, font, color
+        });
+        page.drawText(destFull, {
+          x: 462, y: base(187, 9.5), size: 9.5, font, color
+        });
+
+        // === TABLEAU : UNE ligne par article (aucune ligne vide) ===
+        const firstRowTop = 232;   // sous l'en-tete (en-tete a y≈210)
+        const available = 505 - firstRowTop;
+        const spacing = lignes.length ? Math.min(22, Math.max(12, Math.floor(available / lignes.length))) : 22;
+        const maxRows = Math.floor(available / 12);
+        let truncated = false;
+
+        for (let i = 0; i < lignes.length; i++) {
+          if (i >= maxRows) { truncated = true; break; }
+          const l = lignes[i];
+          const y = base(firstRowTop + i * spacing, 9.5);
+
+          page.drawText(String(l.article_nom || ''), {
+            x: 75, y, size: 9.5, font, color, maxWidth: 215
+          });
+          // Plage de numeros : « debut - fin » (carnet), sinon un tiret
+          const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
+          page.drawText(plage, {
+            x: 363 - font.widthOfTextAtSize(plage, 9.5) / 2, y, size: 9.5, font, color
+          });
+          const q = String(l.quantite);
+          page.drawText(q, {
+            x: 459 - font.widthOfTextAtSize(q, 9.5) / 2, y, size: 9.5, font, color
+          });
+          const u = uniteLabel(l.unite);
+          page.drawText(u, {
+            x: 510 - font.widthOfTextAtSize(u, 9.5) / 2, y, size: 9.5, font, color
+          });
+        }
+
+        if (truncated) {
+          page.drawText('… ' + (lignes.length - maxRows) + ' article(s) supplementaires (liste complete dans le systeme)', {
+            x: 75, y: base(firstRowTop + maxRows * spacing, 8), size: 8, font, color: grey
+          });
+        }
+
+        // === Enregistrement ===
+        const pdfBytes = await pdfDoc.save();
+        const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
+        const filepath = path.join(OUTPUT_DIR, filename);
+        fs.writeFileSync(filepath, pdfBytes);
+        resolve('/uploads/' + filename);
+      } catch (err) {
+        reject(err);
       }
-    } catch (e) { /* logo non disponible */ }
-
-    // === TITRES CENTRES ===
-    doc.font('Helvetica-Bold').fillColor(BLACK);
-    doc.fontSize(15);
-    t('NIZAR TRANSPORT VOYAGEURS', 0, 60, PAGE_W, 'center', 20);
-    doc.fontSize(25);
-    t('BON DE RÉCEPTION', 0, 120, PAGE_W, 'center', 32);
-
-    // Separateur sous le titre
-    doc.moveTo(70, 155).lineTo(PAGE_W - 70, 155)
-      .strokeColor('#D1D5DB').lineWidth(0.8).stroke();
-    doc.strokeColor(BLACK).lineWidth(0.5);
-
-    // === DATE / DESTINATION (droite) ===
-    doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
-    t('Date : ' + formatDate(fiche.date_envoi || fiche.date_creation), 398, 160, 190, 'left', 14);
-    t('Destination : ' + destFull, 398, 180, 190, 'left', 14);
-
-    // === TABLEAU DES ARTICLES ===
-    // Colonnes du modele (A4 595.2 x 841.92 pt) — une ligne par article, sans ligne vide
-    const colX = [70.8, 297.4, 429.6, 488.9];
-    const colW = [226.6, 132.2, 59.3, 42];
-    const headers = ['Articles', 'N° Souche', 'Quantité', 'Unité'];
-    const HEADER_H = 17;
-    const tableTop = 210;
-
-    // Sous-seing et signatures fixes en bas de page
-    const attestY = 510;
-    const sigY = 630;
-    const noteY = 750;
-    const tableBottom = attestY - 5;
-    const availableTableH = tableBottom - (tableTop + HEADER_H);
-    // Hauteur de ligne : 21 pt comme le modele, reduite si beaucoup d'articles
-    const rowH = lignes.length ? Math.min(21, Math.max(12, Math.floor(availableTableH / lignes.length))) : 21;
-
-    // En-tete du tableau (fond noir, texte blanc)
-    doc.rect(70.8, tableTop, 460.1, HEADER_H).fill(BLACK);
-    doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(8.5);
-    for (let i = 0; i < headers.length; i++) {
-      t(headers[i], colX[i] + 5, tableTop + 4, colW[i] - 10, i === 0 ? 'left' : 'center', 12);
-    }
-    doc.fillColor(BLACK);
-
-    // Lignes (hauteur adaptee ; troncature si vraiment trop de lignes)
-    let rowY = tableTop + HEADER_H;
-    const fontRow = rowH >= 19 ? 8.5 : 7.5;
-    const maxRows = Math.floor(availableTableH / 12);
-    let truncated = false;
-
-    for (let i = 0; i < lignes.length; i++) {
-      if (i >= maxRows) { truncated = true; break; }
-      const l = lignes[i];
-      if (i % 2 === 0) {
-        doc.rect(70.8, rowY, 460.1, rowH).fill(LIGHT_GRAY);
-        doc.fillColor(BLACK);
-      }
-      doc.font('Helvetica').fontSize(fontRow);
-      t(l.article_nom, colX[0] + 5, rowY + 3, colW[0] - 10, 'left', rowH - 4);
-      // Plage de numeros : « debut - fin » (carnet), sinon un tiret
-      const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
-      t(plage, colX[1] + 5, rowY + 3, colW[1] - 10, 'center', rowH - 4);
-      t(String(l.quantite), colX[2] + 5, rowY + 3, colW[2] - 10, 'center', rowH - 4);
-      t(uniteLabel(l.unite), colX[3] + 5, rowY + 3, colW[3] - 10, 'center', rowH - 4);
-      rowY += rowH;
-    }
-
-    if (truncated) {
-      doc.fontSize(7.5).font('Helvetica').fillColor(MEDIUM_GRAY);
-      t('… (' + (lignes.length - maxRows) + ' article(s) supplementaires — liste complete dans le systeme)', 70.8, rowY + 3, 460, 'left', 12);
-    }
-
-    // === SOUS-SEING (attestation de reception) ===
-    doc.font('Helvetica').fillColor(BLACK);
-    doc.fontSize(10);
-    t('Je soussigné, atteste avoir reçu l\'ensemble des articles listés ci-dessus, en bon état apparent et conformes à la demande.', 71, attestY, 460, 'left', 30);
-
-    // === SIGNATURES ===
-    // Gestionnaire de stock (gauche)
-    doc.fontSize(9).font('Helvetica-Bold').fillColor(BLACK);
-    t('GESTIONNAIRE DE STOCK', 71, sigY, 210, 'left', 14);
-    doc.moveTo(71, sigY + 30).lineTo(281, sigY + 30).strokeColor(BLACK).lineWidth(0.5).stroke();
-
-    // Date et signature a la reception (droite)
-    t('DATE ET SIGNATURE À LA RÉCEPTION', 308, sigY, 225, 'left', 14);
-    doc.moveTo(308, sigY + 30).lineTo(533, sigY + 30).strokeColor(BLACK).lineWidth(0.5).stroke();
-    doc.strokeColor(BLACK).lineWidth(0.5);
-
-    // === NOTE IMPORTANTE ===
-    doc.fontSize(9.5).font('Helvetica-Bold').fillColor(BLACK);
-    t('NB : A renvoyer au service stock dès signature', 0, noteY, PAGE_W, 'center', 14);
-
-    doc.end();
-
-    stream.on('finish', () => resolve('/uploads/' + filename));
-    stream.on('error', reject);
+    })();
   });
 }
 

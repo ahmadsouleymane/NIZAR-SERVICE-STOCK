@@ -3,63 +3,37 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Fiche de sortie — Nizar</title>
+  <title>Bon de réception — Nizar</title>
   <style>
-    /* ===== Page A4 ===== */
-    @page { size: A4; margin: 10mm; }
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: Arial, Helvetica, sans-serif;
-      color: #111827;
+    body { background: #e5e7eb; font-family: Arial, Helvetica, sans-serif; }
+    .controls {
+      text-align: center;
+      padding: 12px;
       background: #fff;
-      font-size: 12px;
-      line-height: 1.4;
+      border-bottom: 1px solid #d1d5db;
     }
-    .sheet {
-      max-width: 190mm;
-      margin: 0 auto;
-      padding: 2mm 4mm;
-      position: relative;
+    .controls button {
+      padding: 8px 18px;
+      font-size: 13px;
+      border: none;
+      border-radius: 8px;
+      background: #0EA5A0;
+      color: #fff;
+      cursor: pointer;
     }
-    /* ===== En-tête ===== */
-    .head { display: flex; align-items: flex-start; gap: 8px; }
-    .head img { height: 62px; width: 62px; object-fit: contain; margin-top: 4px; }
-    .head .brand { flex: 1; text-align: center; }
-    .head h1 { font-size: 14px; letter-spacing: 0.6px; margin-top: 8px; }
-    .head h2 { font-size: 24px; margin-top: 10px; }
-    .head .sep { border-bottom: 1px solid #D1D5DB; margin: 14px 0 12px; }
-    /* ===== Informations (droite) ===== */
-    .info { margin: 0 0 16px; text-align: right; font-size: 11.5px; }
-    .info .line { margin-bottom: 6px; font-weight: 700; }
-    /* ===== Tableau ===== */
-    table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-    th { background: #111827; color: #fff; text-align: left; padding: 6px 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.3px; }
-    th.c { text-align: center; }
-    td { border-bottom: 1px solid #E5E7EB; padding: 6px 8px; font-size: 11.5px; }
-    td.c { text-align: center; }
-    tr:nth-child(even) td { background: #F3F4F6; }
-    /* ===== Sous-seing (attestation) ===== */
-    .attest { margin-top: 28px; font-size: 11px; }
-    /* ===== Signatures ===== */
-    .sign { display: flex; gap: 40px; margin-top: 48px; }
-    .sign .box { flex: 1; }
-    .sign .label { font-size: 10.5px; font-weight: 700; margin-bottom: 30px; }
-    .sign .line { border-top: 1px solid #111827; }
-    /* ===== Note ===== */
-    .note { text-align: center; margin-top: 60px; font-size: 11px; font-weight: 700; }
-    /* ===== Controles hors impression ===== */
-    .no-print { text-align: center; margin: 14px auto; max-width: 190mm; }
-    .no-print button { padding: 8px 18px; font-size: 13px; border: none; border-radius: 8px; background: #0EA5A0; color: #fff; cursor: pointer; }
-    .no-print .hint { color: #6B7280; font-size: 12px; margin-top: 8px; }
-    #loading { text-align: center; padding: 40px 0; color: #6B7280; }
-    @media print {
-      .no-print { display: none !important; }
-    }
+    .controls .hint { color: #6B7280; font-size: 12px; margin-top: 6px; }
+    #pdf-frame { display: block; width: 100%; height: calc(100vh - 62px); border: none; background: #fff; }
+    #loading { padding: 40px; text-align: center; color: #6B7280; }
   </style>
 </head>
 <body>
-  <div class="no-print"><button id="btn-print">Imprimer cette fiche</button><div class="hint">La boîte d'impression s'ouvre automatiquement.</div></div>
-  <div id="sheet-container"><div id="loading">Chargement de la fiche…</div></div>
+  <div class="controls">
+    <button id="btn-print">Imprimer ce bon de réception</button>
+    <div class="hint">La boîte d'impression s'ouvre automatiquement.</div>
+  </div>
+  <div id="loading">Chargement du bon de réception…</div>
+  <iframe id="pdf-frame" style="display:none"></iframe>
 
   <script>
     (function() {
@@ -67,69 +41,35 @@
       var id = params.get('id');
       var token = localStorage.getItem('nizar_token');
 
-      function esc(s) { if (s === null || s === undefined) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-      function fmtDate(iso) { if (!iso) return '-'; var d = new Date(iso); if (isNaN(d.getTime())) return iso; return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2)+'/'+d.getFullYear(); }
-      function uniteLabel(u) {
-        var map = { 'unite':'Unité','piece':'Unité','carton':'Carton','lot':'Lot','rouleau':'Rouleau','paquet':'Paquet','boite':'Boîte','flacon':'Flacon','ramette':'Ramette' };
-        u = String(u || '');
-        return map[u.toLowerCase()] || u;
+      function showError(msg) {
+        document.getElementById('loading').innerHTML = '<span style="color:#DC2626">' + msg + '</span>';
       }
 
-      function render(fiche, lignes) {
-        var dest = esc(fiche.localite_nom || '-') + (fiche.localite_service ? ' — Siège' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
-        var rows = '';
-        if (!lignes || !lignes.length) {
-          rows = '<tr><td colspan="4">Aucun article</td></tr>';
-        } else {
-          for (var i = 0; i < lignes.length; i++) {
-            var l = lignes[i];
-            // Plage de numeros : « debut - fin » pour un carnet, sinon un tiret
-            var plage = (l.numero_debut && l.numero_fin) ? esc(String(l.numero_debut)) + ' - ' + esc(String(l.numero_fin)) : '-';
-            rows += '<tr>' +
-              '<td>' + esc(l.article_nom || '-') + '</td>' +
-              '<td class="c">' + plage + '</td>' +
-              '<td class="c">' + (l.quantite || '-') + '</td>' +
-              '<td class="c">' + esc(uniteLabel(l.unite)) + '</td>' +
-              '</tr>';
-          }
-        }
-        document.getElementById('sheet-container').innerHTML =
-          '<div class="sheet">' +
-            '<div class="head">' +
-              '<img src="/logo.jpeg" alt="Nizar">' +
-              '<div class="brand"><h1>NIZAR TRANSPORT VOYAGEURS</h1><h2>BON DE RÉCEPTION</h2><div class="sep"></div></div>' +
-            '</div>' +
-            '<div class="info">' +
-              '<div class="line">Date : ' + fmtDate(fiche.date_envoi || fiche.date_creation) + '</div>' +
-              '<div class="line">Destination : ' + dest + '</div>' +
-            '</div>' +
-            '<table><thead><tr>' +
-              '<th>Articles</th><th class="c">N° Souche</th><th class="c">Quantité</th><th class="c">Unité</th>' +
-            '</tr></thead><tbody>' + rows + '</tbody></table>' +
-            '<div class="attest">Je soussigné, atteste avoir reçu l\'ensemble des articles listés ci-dessus, en bon état apparent et conformes à la demande.</div>' +
-            '<div class="sign">' +
-              '<div class="box"><div class="label">GESTIONNAIRE DE STOCK</div><div class="line"></div></div>' +
-              '<div class="box"><div class="label">DATE ET SIGNATURE À LA RÉCEPTION</div><div class="line"></div></div>' +
-            '</div>' +
-            '<div class="note">NB : A renvoyer au service stock dès signature</div>' +
-          '</div>';
-        // Impression automatique
-        setTimeout(function() { window.print(); }, 350);
-      }
+      if (!id || !token) { showError('Bon de réception introuvable ou session expirée.'); return; }
 
-      if (!id || !token) {
-        document.getElementById('sheet-container').innerHTML = '<div class="no-print" style="color:#DC2626">Fiche introuvable ou session expirée.</div>';
-        return;
-      }
-
-      fetch('/api/fiches/' + id, { headers: { 'Authorization': 'Bearer ' + token } })
-        .then(function(r) { if (!r.ok) throw new Error('Erreur ' + r.status); return r.json(); })
-        .then(function(data) { render(data.fiche, data.lignes); })
+      // Charger le PDF du modele (avec les donnees) puis l'imprimer directement
+      fetch('/api/fiches/' + id + '/pdf', { headers: { 'Authorization': 'Bearer ' + token } })
+        .then(function(r) { if (!r.ok) throw new Error('Erreur ' + r.status); return r.blob(); })
+        .then(function(blob) {
+          var url = URL.createObjectURL(blob);
+          var frame = document.getElementById('pdf-frame');
+          var loading = document.getElementById('loading');
+          frame.src = url;
+          frame.style.display = 'block';
+          if (loading) loading.style.display = 'none';
+          // Laisser le temps au PDF de s'afficher puis ouvrir la boite d'impression
+          setTimeout(function() {
+            try { frame.contentWindow.print(); } catch (e) { /* ignore */ }
+          }, 900);
+        })
         .catch(function(err) {
-          document.getElementById('sheet-container').innerHTML = '<div class="no-print" style="color:#DC2626">Impossible de charger la fiche : ' + esc(err.message) + '</div>';
+          showError('Impossible de charger le PDF : ' + err.message);
         });
 
-      document.getElementById('btn-print').addEventListener('click', function() { window.print(); });
+      document.getElementById('btn-print').addEventListener('click', function() {
+        var frame = document.getElementById('pdf-frame');
+        try { frame.contentWindow.print(); } catch (e) { /* ignore */ }
+      });
     })();
   </script>
 </body>
