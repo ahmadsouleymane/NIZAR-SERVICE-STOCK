@@ -326,6 +326,15 @@
           form.reset();
         })
         .catch(function(err) {
+          // Si le back-end dort encore (réseau injoignable) : on attend son réveil
+          // puis on relance la connexion automatiquement.
+          if (err && err.message === 'Impossible de contacter le serveur.') {
+            WakeManager.ensureReady(function() {
+              var form = document.getElementById('login-form');
+              if (form) form.dispatchEvent(new Event('submit'));
+            }, { intervalMs: 2000 });
+            return;
+          }
           errorEl.textContent = err.message;
           errorEl.style.display = 'block';
           btn.disabled = false;
@@ -376,19 +385,23 @@
     initLogin();
     initEvents();
 
-    if (API.getToken()) {
-      var savedUser = localStorage.getItem('nizar_user');
-      if (savedUser) {
-        try {
-          user = JSON.parse(savedUser);
-          document.getElementById('drawer-username').textContent = user.username;
-          document.getElementById('drawer-role').textContent = user.role;
-          showMain();
-          buildNav();
-          onHashChange();
-        } catch (e) { API.clearToken(); showLogin(); }
+    // Réveil du back-end (plan Render gratuit) : pré-réveil immédiat + écran de
+    // chargement tant que le serveur dort. L'app n'est affichée qu'une fois prêt.
+    WakeManager.ensureReady(function() {
+      if (API.getToken()) {
+        var savedUser = localStorage.getItem('nizar_user');
+        if (savedUser) {
+          try {
+            user = JSON.parse(savedUser);
+            document.getElementById('drawer-username').textContent = user.username;
+            document.getElementById('drawer-role').textContent = user.role;
+            showMain();
+            buildNav();
+            onHashChange();
+          } catch (e) { API.clearToken(); showLogin(); }
+        } else { showLogin(); }
       } else { showLogin(); }
-    } else { showLogin(); }
+    }, { intervalMs: 2500 });
   }
 
   if (document.readyState === 'loading') {

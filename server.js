@@ -48,6 +48,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Sante du service (public) — utilisé par le front pour détecter le réveil du
+// back-end (plan Render gratuit : mise en veille après 15 min d'inactivité).
+app.get('/api/health', (req, res) => {
+  res.json({ ok: true, uptime: Math.round(process.uptime()), time: new Date().toISOString() });
+});
+
 // Routes API
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/dashboard', require('./routes/dashboard'));

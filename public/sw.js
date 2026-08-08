@@ -26,6 +26,7 @@ var STATIC_ASSETS = [
   '/js/alertes.js',
   '/js/globalsearch.js',
   '/js/billets.js',
+  '/js/wake.js',
   '/imprimer.html',
   '/manifest.json'
 ];

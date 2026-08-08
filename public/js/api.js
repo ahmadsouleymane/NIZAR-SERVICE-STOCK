@@ -28,36 +28,46 @@ const API = {
   },
 
   async fetch(url, options = {}) {
-    try {
-      const res = await fetch(url, {
-        headers: this._headers(),
-        ...options
-      });
+    let networkRetry = 0;
+    for (;;) {
+      try {
+        const res = await fetch(url, {
+          headers: this._headers(),
+          ...options
+        });
 
-      if (res.status === 401) {
-        this.clearToken();
-        window.location.hash = '#login';
-        throw new Error('Session expirée. Veuillez vous reconnecter.');
+        if (res.status === 401) {
+          this.clearToken();
+          window.location.hash = '#login';
+          throw new Error('Session expirée. Veuillez vous reconnecter.');
+        }
+
+        // Pour les exports Excel (blob)
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('spreadsheet') || ct.includes('officedocument')) {
+          return res.blob();
+        }
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Erreur ' + res.status);
+        }
+
+        return data;
+      } catch (err) {
+        // Réseau injoignable : le back-end dort peut-être (mise en veille Render).
+        // On attend son réveil silencieusement puis on réessaie une fois.
+        if (err && err.message === 'Failed to fetch' && networkRetry === 0) {
+          networkRetry++;
+          try { await WakeManager.waitReady(2500, 75000); } catch (e) { /* ignoré */ }
+          continue;
+        }
+        if (err && err.message === 'Failed to fetch') {
+          throw new Error('Impossible de contacter le serveur.');
+        }
+        throw err;
       }
-
-      // Pour les exports Excel (blob)
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('spreadsheet') || ct.includes('officedocument')) {
-        return res.blob();
-      }
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error || 'Erreur ' + res.status);
-      }
-
-      return data;
-    } catch (err) {
-      if (err.message === 'Failed to fetch') {
-        throw new Error('Impossible de contacter le serveur.');
-      }
-      throw err;
     }
   },
 

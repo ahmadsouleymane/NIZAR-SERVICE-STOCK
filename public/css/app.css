@@ -1198,6 +1198,54 @@ td.actions { display: flex; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; 
 }
 
 /* ------------------------------------------------------------
+   23.6 RÉVEIL DU SERVEUR (plan gratuit Render — mise en veille 15 min)
+   ------------------------------------------------------------ */
+.wake-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background:
+    radial-gradient(1000px 500px at 70% -10%, rgba(14, 165, 160, 0.12), transparent 60%),
+    var(--color-bg);
+}
+.wake-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 2rem 1.5rem;
+  text-align: center;
+}
+.wake-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-lg);
+  object-fit: contain;
+  background: #fff;
+  padding: 6px;
+  margin: 0 auto 0.75rem;
+  box-shadow: var(--shadow-sm);
+}
+.wake-card h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+.wake-card p { font-size: 0.85rem; color: var(--color-text-muted); margin-bottom: 1rem; }
+.wake-spinner {
+  width: 34px;
+  height: 34px;
+  margin: 0 auto 1rem;
+  border: 3px solid var(--color-accent-soft);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: wake-spin 0.8s linear infinite;
+}
+@keyframes wake-spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------
    24. PRINT
    ------------------------------------------------------------ */
 @media print {
