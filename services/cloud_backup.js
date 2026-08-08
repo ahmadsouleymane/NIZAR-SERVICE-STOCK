@@ -92,10 +92,22 @@ async function restore() {
   return true;
 }
 
+function countArticles(db) {
+  try { return db.prepare('SELECT COUNT(*) c FROM articles').get().c || 0; } catch (e) { return -1; }
+}
+
 // === Sauvegarde ===
 // Snapshot cohérent via VACUUM INTO (sans corrompre la base vivante), puis PUT GitHub.
 async function save(db, reason) {
   if (!enabled()) return;
+  // GARDE-FOU : ne jamais écraser une sauvegarde réelle par une base vide (seed).
+  // Un serveur qui démarre sans restauration réussie aurait 0 article et écraserait
+  // sinon les vraies données à chaque sauvegarde périodique.
+  const n = countArticles(db);
+  if (n === 0) {
+    console.log('[backup] Base locale sans articles — sauvegarde ignorée (préserve la sauvegarde réelle).');
+    return;
+  }
   const tmp = DB_FILE + '.backup.tmp';
   try {
     db.exec("VACUUM INTO '" + tmp.replace(/'/g, "''") + "'");
