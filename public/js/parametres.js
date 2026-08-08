@@ -29,6 +29,11 @@ var Parametres = {
       '<button class="btn btn-accent btn-sm" id="btn-import" style="background:var(--color-accent);color:#fff">Importer Excel</button></div>' +
       '<div id="import-result" class="mt-sm"></div></div>' : '') +
 
+      // Anomalies d'import (admin only)
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Anomalies d\'import</h3></div>' +
+      '<p class="text-sm text-muted mb-sm">Mouvements de billets/carnets importes sans numero de souche valide — a corriger manuellement.</p>' +
+      '<div id="anomalies-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
+
       // Sauvegarde de la base (admin only)
       (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Sauvegarde de la base</h3></div>' +
       '<p class="text-sm text-muted mb-sm">Telecharger un instantane complet de la base (donnees + archives). Conservez ces fichiers dans un endroit sur.</p>' +
@@ -52,6 +57,7 @@ var Parametres = {
       this._loadLocalites();
       this._loadUsers();
       this._loadAuditLog();
+      this._loadAnomalies();
     }
     this._bindEvents();
   },
@@ -89,6 +95,56 @@ var Parametres = {
           btn.addEventListener('click', function() { self._deleteCategory(parseInt(this.getAttribute('data-id'))); });
         });
       }).catch(function() {});
+  },
+
+  // === Anomalies d'import ===
+  _loadAnomalies: function() {
+    var self = this;
+    API.getAnomalies()
+      .then(function(data) { self._renderAnomalies(data.anomalies); })
+      .catch(function(err) {
+        var el = document.getElementById('anomalies-list');
+        if (el) el.innerHTML = '<p class="text-muted text-center">' + UI.escapeHtml(err.message) + '</p>';
+      });
+  },
+
+  _renderAnomalies: function(anomalies) {
+    var el = document.getElementById('anomalies-list');
+    if (!el) return;
+    if (!anomalies.length) { el.innerHTML = '<p class="text-muted text-center">Aucune anomalie.</p>'; return; }
+
+    var self = this;
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Date</th><th>Article</th><th>Type</th><th>Qte</th><th>Localite</th><th>Correction</th>' +
+      '</tr></thead><tbody>';
+    for (var i = 0; i < anomalies.length; i++) {
+      var a = anomalies[i];
+      html += '<tr>' +
+        '<td>' + UI.formatDate(a.date) + '</td>' +
+        '<td>' + UI.escapeHtml(a.article_nom || '-') + '</td>' +
+        '<td>' + (a.type === 'entree' ? 'Entree' : 'Sortie') + '</td>' +
+        '<td>' + a.quantite + '</td>' +
+        '<td>' + UI.escapeHtml(a.localite_nom || '-') + '</td>' +
+        '<td style="display:flex;gap:6px;align-items:center">' +
+        '<input type="text" class="form-input anomalie-debut" data-id="' + a.id + '" placeholder="N° debut" style="width:100px;min-height:36px">' +
+        '<input type="text" class="form-input anomalie-fin" data-id="' + a.id + '" placeholder="N° fin" style="width:100px;min-height:36px">' +
+        '<button class="btn btn-sm btn-primary btn-corriger-anomalie" data-id="' + a.id + '">Corriger</button>' +
+        '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+
+    el.querySelectorAll('.btn-corriger-anomalie').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var debut = el.querySelector('.anomalie-debut[data-id="' + id + '"]').value.trim();
+        var fin = el.querySelector('.anomalie-fin[data-id="' + id + '"]').value.trim();
+        if (!debut || !fin) { UI.toast('N° debut et N° fin requis.', 'error'); return; }
+        API.corrigerNumeroMouvement(id, debut, fin)
+          .then(function() { UI.toast('Anomalie corrigee.', 'success'); self._loadAnomalies(); })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
+      });
+    });
   },
 
   _addCategory: function() {
