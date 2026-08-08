@@ -121,6 +121,7 @@ router.get('/anomalies', authenticate, requireAdmin, (req, res) => {
     JOIN articles a ON m.article_id = a.id
     LEFT JOIN localites l ON m.localite_id = l.id
     WHERE a.type_article = 'numerote' AND (m.numero_debut IS NULL OR m.numero_fin IS NULL)
+      AND (m.motif IS NULL OR m.motif != 'Retour non utilise — remis en stock')
     ORDER BY m.date ASC, m.id ASC
     LIMIT 500
   `).all();
