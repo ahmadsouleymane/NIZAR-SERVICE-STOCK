@@ -80,25 +80,36 @@ function generateFichePDF(fiche, lignes) {
         const filled = Math.min(lignes.length, ROW_SEPS.length);
         const whiteColor = rgb(1, 1, 1);
 
+        // Centres des colonnes (calcules sur le modele)
+        const colArticleX = TABLE_LEFT + 110;
+        const colSoucheX = 366;
+        const colQteX = 462;
+        const colUniteX = 510;
+
         for (let i = 0; i < filled; i++) {
           const l = lignes[i];
           const y = base(firstRowTop + i * PITCH, 9.5);
 
-          page.drawText(String(l.article_nom || ''), {
-            x: TABLE_LEFT + 4, y, size: 9.5, font, color, maxWidth: 215
+          const artText = String(l.article_nom || '-');
+          page.drawText(artText, {
+            x: colArticleX - font.widthOfTextAtSize(artText, 9.5) / 2,
+            y, size: 9.5, font, color
           });
           // Plage de numeros : « debut - fin » (carnet), sinon un tiret
           const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
           page.drawText(plage, {
-            x: 363 - font.widthOfTextAtSize(plage, 9.5) / 2, y, size: 9.5, font, color
+            x: colSoucheX - font.widthOfTextAtSize(plage, 9.5) / 2,
+            y, size: 9.5, font, color
           });
           const q = String(l.quantite);
           page.drawText(q, {
-            x: 459 - font.widthOfTextAtSize(q, 9.5) / 2, y, size: 9.5, font, color
+            x: colQteX - font.widthOfTextAtSize(q, 9.5) / 2,
+            y, size: 9.5, font, color
           });
           const u = ficheUniteLabel(l.unite);
           page.drawText(u, {
-            x: 510 - font.widthOfTextAtSize(u, 9.5) / 2, y, size: 9.5, font, color
+            x: colUniteX - font.widthOfTextAtSize(u, 9.5) / 2,
+            y, size: 9.5, font, color
           });
         }
 
@@ -135,119 +146,146 @@ function generateFichePDF(fiche, lignes) {
 
 /**
  * Genere le PDF « Bon de livraison » quand le fournisseur n'a pas transmis
- * de bon de livraison papier. Construit de zero avec pdfkit (meme charte
- * graphique — logo, teal, tableau noir/blanc — que generateStockPDF), plutot
- * que par overlay sur le modele bon-de-reception.pdf : evite de deviner des
- * coordonnees sur un document dont le contenu imprime (titre, libelles) est
- * fige dans une image/texte qu'on ne maitrise pas pixel pres.
+ * de bon de livraison papier. Utilise le meme modele officiel que le bon de
+ * reception, avec un overlay adapte : titre « BON DE LIVRAISON », bloc infos
+ * Fournisseur / N° BL / N° fiche de besoin, signatures Fournisseur + Gestionnaire.
  * @param {Object} fiche - { reference, fournisseur_nom, date_entree, numero_bl, numero_fiche_besoin }
  * @param {Array} lignes - [{ article_nom, quantite, numero_debut, numero_fin, unite }]
  * @returns {Promise<string>} chemin '/uploads/...' du PDF genere
  */
 function generateBonLivraisonPDF(fiche, lignes) {
   return new Promise((resolve, reject) => {
-    try {
-      const filename = 'bon-livraison-' + String(fiche.reference || 'BL').replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
-      const filepath = path.join(OUTPUT_DIR, filename);
-      const doc = new PDFDocument({ size: 'A4', margin: MARGIN });
-      const stream = fs.createWriteStream(filepath);
-      doc.pipe(stream);
-
-      // === EN-TETE ===
-      const logoSize = 44;
-      let hasLogo = false;
+    (async () => {
       try {
-        if (fs.existsSync(LOGO_PATH)) {
-          doc.image(LOGO_PATH, MARGIN, MARGIN, { width: logoSize, height: logoSize });
-          hasLogo = true;
+        const modelBytes = fs.readFileSync(MODEL_PATH);
+        const pdfDoc = await PDFLibDocument.load(modelBytes);
+        const page = pdfDoc.getPage(0);
+        const { height } = page.getSize();
+
+        const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+        const color = rgb(0.12, 0.12, 0.12);
+        const grey = rgb(0.45, 0.45, 0.45);
+        const whiteColor = rgb(1, 1, 1);
+
+        const base = (topY, sz) => height - topY - sz * 0.72;
+
+        // === TITRE : cacher « BON DE RÉCEPTION » et ecrire « BON DE LIVRAISON » ===
+        page.drawRectangle({ x: 68, y: height - 113, width: 170, height: 16, color: whiteColor });
+        page.drawText('BON DE LIVRAISON', {
+          x: 70, y: base(103, 10), size: 10, font: fontBold, color
+        });
+
+        // === N° (reference) : remplacer « 000 » ===
+        page.drawRectangle({ x: 296, y: height - 133, width: 30, height: 15, color: whiteColor });
+        page.drawText(fiche.reference || '', {
+          x: 299, y: base(122, 9.5), size: 9.5, font, color
+        });
+
+        // === DATE ===
+        page.drawText(formatDate(fiche.date_entree), {
+          x: 432, y: base(186, 10), size: 10, font, color
+        });
+
+        // === FOURNISSEUR (remplace « Destination ») ===
+        // Effacer l'ancien libelle « Destination : »
+        page.drawRectangle({ x: 390, y: height - 215, width: 140, height: 14, color: whiteColor });
+        page.drawText('Fournisseur : ' + (fiche.fournisseur_nom || '-'), {
+          x: 395, y: base(210, 9.5), size: 9.5, font, color
+        });
+
+        // === N° BL + N° Fiche de besoin (sous la date) ===
+        page.drawText('N° BL : ' + (fiche.numero_bl || '-'), {
+          x: 395, y: base(230, 9), size: 9, font, color
+        });
+        page.drawText('Fiche besoin : ' + (fiche.numero_fiche_besoin || '-'), {
+          x: 395, y: base(247, 9), size: 9, font, color
+        });
+
+        // === TABLEAU : centrer tous les elements ===
+        const ROW_SEPS = [266.7, 287.6, 308.8, 330.1, 351.3, 372.5, 393.8, 415.0, 435.9, 457.1, 478.4, 499.6];
+        const TABLE_LEFT = 70.8;
+        const TABLE_W = 460.1;
+        const PITCH = 21;
+        const firstRowTop = 255;
+        const filled = Math.min(lignes.length, ROW_SEPS.length);
+
+        // Centres des colonnes (calcules a partir du modele)
+        const colArticleX = TABLE_LEFT + 110;   // centre colonne Article
+        const colSoucheX = 366;                   // centre colonne N° Souche
+        const colQteX = 462;                      // centre colonne Quantite
+        const colUniteX = 510;                    // centre colonne Unite
+
+        for (let i = 0; i < filled; i++) {
+          const l = lignes[i];
+          const y = base(firstRowTop + i * PITCH, 9.5);
+
+          // Article — centre
+          const artText = String(l.article_nom || '-');
+          page.drawText(artText, {
+            x: colArticleX - font.widthOfTextAtSize(artText, 9.5) / 2,
+            y, size: 9.5, font, color
+          });
+          // Plage — centre
+          const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
+          page.drawText(plage, {
+            x: colSoucheX - font.widthOfTextAtSize(plage, 9.5) / 2,
+            y, size: 9.5, font, color
+          });
+          // Quantite — centre
+          const q = String(l.quantite);
+          page.drawText(q, {
+            x: colQteX - font.widthOfTextAtSize(q, 9.5) / 2,
+            y, size: 9.5, font, color
+          });
+          // Unite — centre
+          const u = ficheUniteLabel(l.unite);
+          page.drawText(u, {
+            x: colUniteX - font.widthOfTextAtSize(u, 9.5) / 2,
+            y, size: 9.5, font, color
+          });
         }
-      } catch (e) { /* logo non disponible */ }
-      const titleX = hasLogo ? MARGIN + logoSize + 14 : MARGIN;
 
-      doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
-      doc.text('NIZAR TRANSPORT VOYAGEUR', titleX, MARGIN + 2, { align: 'left' });
-      doc.fontSize(17).font('Helvetica-Bold').fillColor(TEAL);
-      doc.text('BON DE LIVRAISON', titleX, MARGIN + 17, { align: 'left' });
-      doc.fontSize(8).font('Helvetica').fillColor(MEDIUM_GRAY);
-      doc.text('N° ' + (fiche.reference || ''), titleX, MARGIN + 40, { align: 'left' });
-
-      const sepY = MARGIN + logoSize + 8;
-      doc.moveTo(MARGIN, sepY).lineTo(PAGE_W - MARGIN, sepY).strokeColor(TEAL).lineWidth(2).stroke();
-      doc.strokeColor(BLACK).lineWidth(0.5);
-
-      // === BLOC INFOS ===
-      let infoY = sepY + 18;
-      doc.fontSize(9.5).fillColor(BLACK);
-      doc.font('Helvetica-Bold').text('Fournisseur : ', MARGIN, infoY, { continued: true });
-      doc.font('Helvetica').text(fiche.fournisseur_nom || '-');
-      doc.font('Helvetica-Bold').text('Date : ', MARGIN + 300, infoY, { continued: true });
-      doc.font('Helvetica').text(formatDate(fiche.date_entree));
-
-      infoY += 16;
-      doc.font('Helvetica-Bold').text('N° BL fournisseur : ', MARGIN, infoY, { continued: true });
-      doc.font('Helvetica').text(fiche.numero_bl || '-');
-      doc.font('Helvetica-Bold').text('N° fiche de besoin : ', MARGIN + 300, infoY, { continued: true });
-      doc.font('Helvetica').text(fiche.numero_fiche_besoin || '-');
-
-      infoY += 26;
-
-      // === TABLEAU ===
-      const colW = [230, 110, 60, 55];
-      const colX = [MARGIN, MARGIN + 230, MARGIN + 340, MARGIN + 400];
-      const headers = ['Article', 'N° Souche', 'Quantité', 'Unité'];
-      const HEADER_H = 20;
-      const maxBottom = PAGE_H - 140;
-
-      function drawHeader(y) {
-        doc.rect(MARGIN, y, CONTENT_W, HEADER_H).fill(BLACK);
-        doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(9);
-        for (let i = 0; i < headers.length; i++) {
-          doc.text(headers[i], colX[i] + 4, y + 5, { width: colW[i] - 8, align: i === 0 ? 'left' : 'center' });
+        // Masquer les lignes vides sous la derniere ligne remplie
+        if (filled > 0 && filled < ROW_SEPS.length) {
+          const lastRowBottom = ROW_SEPS[filled - 1];
+          const gridBottom = ROW_SEPS[ROW_SEPS.length - 1] + 4;
+          page.drawRectangle({
+            x: TABLE_LEFT - 2, y: height - gridBottom,
+            width: TABLE_W + 4, height: gridBottom - (lastRowBottom + 1),
+            color: whiteColor
+          });
         }
-        doc.fillColor(BLACK);
+
+        if (lignes.length > ROW_SEPS.length) {
+          page.drawText('… ' + (lignes.length - ROW_SEPS.length) + ' article(s) supplementaires (liste complete dans le systeme)', {
+            x: TABLE_LEFT + 4, y: base(505, 8), size: 8, font, color: grey
+          });
+        }
+
+        // === SIGNATURES : Fournisseur (gauche) / Gestionnaire de stock (droite) ===
+        // Effacer « CHEF D'AGENCE » (droite) et « GESTIONNAIRE DE STOCK » (gauche)
+        // du modele pour les remplacer
+        page.drawRectangle({ x: 68, y: height - 580, width: 180, height: 30, color: whiteColor });
+        page.drawRectangle({ x: 370, y: height - 580, width: 180, height: 30, color: whiteColor });
+
+        page.drawText('FOURNISSEUR', {
+          x: 100, y: base(558, 9), size: 9, font: fontBold, color: grey
+        });
+        page.drawText('GESTIONNAIRE DE STOCK', {
+          x: 370, y: base(558, 9), size: 9, font: fontBold, color: grey
+        });
+
+        // === Enregistrement ===
+        const pdfBytes = await pdfDoc.save();
+        const filename = 'bon-livraison-' + String(fiche.reference || 'BL').replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
+        const filepath = path.join(OUTPUT_DIR, filename);
+        fs.writeFileSync(filepath, pdfBytes);
+        resolve('/uploads/' + filename);
+      } catch (err) {
+        reject(err);
       }
-
-      drawHeader(infoY);
-      let rowY = infoY + HEADER_H;
-
-      for (let i = 0; i < lignes.length; i++) {
-        const l = lignes[i];
-        if (rowY + 20 > maxBottom) {
-          doc.addPage();
-          rowY = MARGIN + 10;
-          drawHeader(rowY);
-          rowY += HEADER_H;
-        }
-        if (i % 2 === 0) {
-          doc.rect(MARGIN, rowY, CONTENT_W, 20).fill(LIGHT_GRAY);
-          doc.fillColor(BLACK);
-        }
-        doc.font('Helvetica').fontSize(9);
-        doc.text(String(l.article_nom || '-'), colX[0] + 4, rowY + 4, { width: colW[0] - 8 });
-        const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
-        doc.text(plage, colX[1] + 4, rowY + 4, { width: colW[1] - 8, align: 'center' });
-        doc.text(String(l.quantite), colX[2] + 4, rowY + 4, { width: colW[2] - 8, align: 'center' });
-        doc.text(ficheUniteLabel(l.unite), colX[3] + 4, rowY + 4, { width: colW[3] - 8, align: 'center' });
-        rowY += 20;
-      }
-
-      // === SIGNATURES ===
-      let sigY = Math.max(rowY + 40, PAGE_H - 130);
-      doc.moveTo(MARGIN, sigY).lineTo(MARGIN + 180, sigY).strokeColor(BLACK).lineWidth(0.5).stroke();
-      doc.fontSize(9).font('Helvetica-Bold').text('LIVREUR', MARGIN, sigY + 5);
-      doc.moveTo(PAGE_W - MARGIN - 180, sigY).lineTo(PAGE_W - MARGIN, sigY).stroke();
-      doc.text('GESTIONNAIRE DE STOCK', PAGE_W - MARGIN - 180, sigY + 5);
-
-      // === PIED DE PAGE ===
-      doc.fontSize(7).font('Helvetica').fillColor(MEDIUM_GRAY);
-      doc.text('Document genere par le systeme en l\'absence de bon de livraison fournisseur — Nizar Stock', MARGIN, PAGE_H - 35, { align: 'center', width: CONTENT_W });
-
-      doc.end();
-      stream.on('finish', () => resolve('/uploads/' + filename));
-      stream.on('error', reject);
-    } catch (err) {
-      reject(err);
-    }
+    })();
   });
 }
 
