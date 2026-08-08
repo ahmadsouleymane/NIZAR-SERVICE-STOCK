@@ -1,10 +1,15 @@
-# Render Blueprint — déploiement de Nizar Stock (plan Starter, disque persistant)
+# Render Blueprint — déploiement de Nizar Stock (plan GRATUIT + sauvegarde GitHub)
+# Sur le plan gratuit, Render n'a PAS de disque persistant : la base SQLite vit sur
+# un disque éphémère. Le service services/cloud_backup.js la restaure depuis un
+# dépôt GitHub privé au démarrage, puis la sauvegarde en continu (toutes les ~3 min
+# et à l'arrêt). Un monitor UptimeRobot (ping toutes les 5 min) maintient le service
+# éveillé pour éviter le cold start (mise en veille après 15 min d'inactivité).
 # Utilisation : sur render.com, « New » → « Blueprint » → connecter ce dépôt GitHub.
 services:
   - type: web
     name: nizar-stock
     runtime: docker
-    plan: starter   # le plan gratuit ne supporte PAS les disques persistants
+    plan: free        # plan gratuit : 750 h/mois, 512 Mo RAM, pas de disque
     region: frankfurt
     healthCheckPath: /
     autoDeploy: true
@@ -16,12 +21,19 @@ services:
       # Secret JWT demandé à la création (à fournir : openssl rand -hex 32)
       - key: JWT_SECRET
         sync: false
-      # Base de données + uploads sur le disque persistant
+      # Base + uploads dans le conteneur (éphémère) — la base est restaurée/sauvegardée
+      # via GitHub par services/cloud_backup.js
       - key: DB_PATH
-        value: /data/nizar.db
+        value: /app/data/nizar.db
       - key: UPLOAD_DIR
-        value: /data/uploads
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
+        value: /app/public/uploads
+      # Sauvegarde GitHub de la base — à renseigner (dépôt privé gratuit) :
+      #   GH_BACKUP_REPO  = proprietaire/repo  (ex: ahmadsouleymane/nizar-stock-backup)
+      #   GH_BACKUP_TOKEN = jeton GitHub avec accès « Contents: write » sur ce dépôt
+      - key: GH_BACKUP_REPO
+        sync: false
+      - key: GH_BACKUP_TOKEN
+        sync: false
+      # Chemin du fichier de base dans le dépôt de sauvegarde
+      - key: GH_BACKUP_PATH
+        value: data/nizar.db

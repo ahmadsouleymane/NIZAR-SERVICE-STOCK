@@ -1,4 +1,4 @@
-# Nizar Stock — conteneur de production (Render / Railway / Fly.io)
+# Nizar Stock — conteneur de production (Render plan gratuit / Railway / Fly.io)
 # node:20-slim (glibc) : better-sqlite3 s'installe sans compilation.
 FROM node:20-slim
 
@@ -14,11 +14,12 @@ RUN npm ci --omit=dev || npm install --omit=dev
 # Code source
 COPY . .
 
-# La base de donnees et les uploads vivent sur le disque persistant (/data),
-# configure par DB_PATH et UPLOAD_DIR (voir render.yaml).
-ENV DB_PATH=/data/nizar.db
-ENV UPLOAD_DIR=/data/uploads
-RUN mkdir -p /data/uploads
+# Sur le plan gratuit, PAS de disque persistant : la base et les uploads vivent
+# dans le conteneur (éphémère). La base est restaurée depuis GitHub au démarrage
+# puis sauvegardée en continu (voir services/cloud_backup.js et render.yaml).
+ENV DB_PATH=/app/data/nizar.db
+ENV UPLOAD_DIR=/app/public/uploads
+RUN mkdir -p /app/data /app/public/uploads
 
 EXPOSE 3000
 

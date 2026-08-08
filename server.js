@@ -37,6 +37,11 @@ app.use('/api/auth/login', loginLimiter);
 // Initialiser la base de donnees (chemin configurable pour le disque persistant)
 const db = initDB(paths.dbPath);
 
+// Sauvegarde GitHub de la base (plan Render gratuit = pas de disque persistant) :
+// restaure la base au demarrage, la pousse toutes les ~3 min et a l'arret (SIGTERM).
+// Inactif en local (GH_BACKUP_REPO non defini).
+require('./services/cloud_backup').start(db);
+
 // Injecter db dans toutes les requetes
 app.use((req, res, next) => {
   req.db = db;

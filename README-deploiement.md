@@ -1,56 +1,86 @@
-# Déploiement de Nizar Stock — Render (plan Starter) + GitHub Actions
+# Déploiement de Nizar Stock — Render (plan GRATUIT) + sauvegarde GitHub
 
-L'app tourne en Node.js avec une base **SQLite**. On la déploie sur **Render
-plan Starter** (~7 $/mois) : le disque persistant conserve la base et les photos.
-GitHub Actions vérifie le code à chaque push et déclenche le déploiement.
+L'app tourne en Node.js avec une base **SQLite**. Elle est déployée sur **Render
+plan gratuit (0 €)**. Le plan gratuit n'a **pas de disque persistant** : la base
+est donc **sauvegardée en continu dans un dépôt GitHub privé** (gratuit) par
+`services/cloud_backup.js`, et **restaurée au démarrage** à chaque redéploiement.
+Un **monitor UptimeRobot** (ping toutes les 5 min) maintient le service éveillé
+pour éviter la mise en veille des 15 min.
 
-> ⚠️ Le plan **gratuit** de Render ne supporte **pas les disques persistants**
-> (la base serait perdue à chaque redéploiement). Le plan **Starter** est le
-> plus petit à inclure un disque.
+> ⚠️ Plan gratuit Render : **750 h d'instance / mois**, **512 Mo RAM**, pas de
+> disque persistant. Avec UptimeRobot 24/7, l'app consomme ~744 h/mois (marge
+> ~6 h) — **surveille la page Billing** de Render.
 
 ---
 
-## 1. Pousser le projet sur GitHub (déjà fait)
+## 1. Préparer le dépôt GitHub de sauvegarde (2 min)
 
-Le dépôt est **https://github.com/ahmadsouleymane/NIZAR-SERVICE-STOCK** (branche `main`).
+1. Sur **https://github.com** → **New repository** → nom `nizar-stock-backup`
+   → **Private** → Create.
+2. **Settings → Developer settings → Personal access tokens → Fine-grained**
+   → New token → limite-le à ce dépôt avec l'accès **Contents : Read and write**.
+   Copie le jeton (commence par `github_pat_…`).
 
-## 2. Créer le service sur Render (Blueprint)
+## 2. Pousser la base actuelle vers GitHub (une seule fois)
 
-1. Va sur **https://render.com** → connecte-toi.
+Depuis ton ordinateur, dans le dossier du projet :
+
+```bash
+GH_BACKUP_REPO=ahmadsouleymane/nizar-stock-backup \
+GH_BACKUP_TOKEN=ton_jeton \
+node scripts/push_initial_backup.js
+```
+
+→ Ton vrai `nizar.db` est uploadé : le déploiement ne partira **pas** d'une base vide.
+
+## 3. Créer le service sur Render (gratuit)
+
+1. Va sur **https://render.com** → connecte-toi (sans carte).
 2. **New → Blueprint** → connecte le dépôt `NIZAR-SERVICE-STOCK`.
-3. Render lit `render.yaml` et crée le service (plan **Starter**) + le disque `/data`.
-4. Quand Render demande **`JWT_SECRET`** → colle le résultat de :
-   ```bash
-   openssl rand -hex 32
-   ```
-5. **Deploy** → quelques minutes → l'app est en ligne en HTTPS :
+3. Render lit `render.yaml` (plan **free**) → demande les variables :
+   - **`JWT_SECRET`** → colle le résultat de `openssl rand -hex 32`.
+   - **`GH_BACKUP_REPO`** → `ahmadsouleymane/nizar-stock-backup`
+   - **`GH_BACKUP_TOKEN`** → ton jeton GitHub.
+4. **Deploy** → quelques minutes → l'app en HTTPS :
    **`https://nizar-stock.onrender.com`**.
 
-## 3. Après le premier déploiement
+## 4. Garder l'app éveillée (UptimeRobot)
 
-- **Importer les données** : la base démarre **vide** (le fichier local n'est pas
-  poussé). Connecte-toi puis **Paramètres → Importer** ton Excel : cela crée les
-  articles, l'historique **et met à jour les stocks** (Feuil4).
+1. Sur **https://uptimerobot.com** (gratuit) → **Add New Monitor**.
+2. Type **HTTP(S)**, URL → `https://nizar-stock.onrender.com/`, intervalle **5 min**.
+3. Le ping empêche la mise en veille (15 min d'inactivité) et donc le cold start.
+
+## 5. Après le premier déploiement
+
+- La base est **restaurée depuis GitHub** au démarrage (tes données actuelles).
 - **Changer les mots de passe par défaut** : Paramètres → Utilisateurs
-  (le compte admin est `Moustapha`, mot de passe par défaut `admin123` — À CHANGER).
-- **Sauvegardes** : bouton « Sauvegarde » dans Paramètres (écrites sur le disque `/data/backups`).
+  (admin `Moustapha` / `admin123` — À CHANGER).
 
-## 4. Déploiement automatique à chaque push
+## Sauvegarde automatique (comment ça marche)
 
-Render déploie automatiquement à chaque push sur `main` (intégration GitHub native).
-En option, pour que **GitHub Actions déclenche** le déploiement explicitement :
-1. Sur Render : **Settings → Deploy Hook** → copie l'URL.
-2. Sur GitHub : **Settings → Secrets and variables → Actions → New repository secret**
-   → nom `RENDER_DEPLOY_HOOK_URL` → colle l'URL.
-
-Le workflow `.github/workflows/deploy.yml` fait alors : **CI (vérifications)** à
-chaque push, puis **déclenchement du déploiement Render**.
+`services/cloud_backup.js` :
+- **au démarrage** → télécharge `nizar.db` depuis le dépôt privé (si le fichier local est vide) ;
+- **toutes les ~3 min** → snapshot cohérent (`VACUUM INTO`) + upload GitHub ;
+- **à l'arrêt (SIGTERM)** → dernier upload avant redéploiement.
 
 ## Variables d'environnement
 
 | Variable | Rôle |
 |---|---|
-| `JWT_SECRET` | **Obligatoire en production** — secret de signature des jetons |
-| `DB_PATH` | Emplacement du fichier SQLite (sur le disque `/data`) |
-| `UPLOAD_DIR` | Dossier des photos/PDF (sur le disque `/data`) |
+| `JWT_SECRET` | **Obligatoire** — secret de signature des jetons |
+| `GH_BACKUP_REPO` | Dépôt GitHub privé de sauvegarde (ex: `owner/repo`) |
+| `GH_BACKUP_TOKEN` | Jeton GitHub (accès Contents read/write) |
+| `GH_BACKUP_PATH` | Chemin du fichier de base dans le dépôt (défaut `data/nizar.db`) |
+| `GH_BACKUP_INTERVAL_MIN` | Fréquence de sauvegarde en minutes (défaut 3) |
+| `DB_PATH` / `UPLOAD_DIR` | Dossiers dans le conteneur (éphémères, restaurés/sauvegardés) |
 | `PORT` | Port d'écoute (3000) |
+
+## ⚠️ Points d'attention
+
+- **Photos/scans** : sur le plan gratuit, les photos uploadées ne sont **pas**
+  encore sauvegardées (disque éphémère). À traiter (Cloudflare R2 gratuit 10 Go,
+  ou inclure le dossier `public/uploads` dans la sauvegarde) — prochaine étape.
+- **Heures d'instance** : l'app allumée 24/7 ≈ 744 h/mois (limite 750 h). Vérifie
+  la page Billing une fois par mois.
+- **GitHub Actions** : le workflow `deploy.yml` vérifie la syntaxe à chaque push ;
+  Render redéploie automatiquement sur push (pas besoin de webhook).
