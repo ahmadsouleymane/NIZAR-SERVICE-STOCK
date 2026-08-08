@@ -133,6 +133,124 @@ function generateFichePDF(fiche, lignes) {
   });
 }
 
+/**
+ * Genere le PDF « Bon de livraison » quand le fournisseur n'a pas transmis
+ * de bon de livraison papier. Construit de zero avec pdfkit (meme charte
+ * graphique — logo, teal, tableau noir/blanc — que generateStockPDF), plutot
+ * que par overlay sur le modele bon-de-reception.pdf : evite de deviner des
+ * coordonnees sur un document dont le contenu imprime (titre, libelles) est
+ * fige dans une image/texte qu'on ne maitrise pas pixel pres.
+ * @param {Object} fiche - { reference, fournisseur_nom, date_entree, numero_bl, numero_fiche_besoin }
+ * @param {Array} lignes - [{ article_nom, quantite, numero_debut, numero_fin, unite }]
+ * @returns {Promise<string>} chemin '/uploads/...' du PDF genere
+ */
+function generateBonLivraisonPDF(fiche, lignes) {
+  return new Promise((resolve, reject) => {
+    try {
+      const filename = 'bon-livraison-' + String(fiche.reference || 'BL').replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
+      const filepath = path.join(OUTPUT_DIR, filename);
+      const doc = new PDFDocument({ size: 'A4', margin: MARGIN });
+      const stream = fs.createWriteStream(filepath);
+      doc.pipe(stream);
+
+      // === EN-TETE ===
+      const logoSize = 44;
+      let hasLogo = false;
+      try {
+        if (fs.existsSync(LOGO_PATH)) {
+          doc.image(LOGO_PATH, MARGIN, MARGIN, { width: logoSize, height: logoSize });
+          hasLogo = true;
+        }
+      } catch (e) { /* logo non disponible */ }
+      const titleX = hasLogo ? MARGIN + logoSize + 14 : MARGIN;
+
+      doc.fontSize(10).font('Helvetica-Bold').fillColor(BLACK);
+      doc.text('NIZAR TRANSPORT VOYAGEUR', titleX, MARGIN + 2, { align: 'left' });
+      doc.fontSize(17).font('Helvetica-Bold').fillColor(TEAL);
+      doc.text('BON DE LIVRAISON', titleX, MARGIN + 17, { align: 'left' });
+      doc.fontSize(8).font('Helvetica').fillColor(MEDIUM_GRAY);
+      doc.text('N° ' + (fiche.reference || ''), titleX, MARGIN + 40, { align: 'left' });
+
+      const sepY = MARGIN + logoSize + 8;
+      doc.moveTo(MARGIN, sepY).lineTo(PAGE_W - MARGIN, sepY).strokeColor(TEAL).lineWidth(2).stroke();
+      doc.strokeColor(BLACK).lineWidth(0.5);
+
+      // === BLOC INFOS ===
+      let infoY = sepY + 18;
+      doc.fontSize(9.5).fillColor(BLACK);
+      doc.font('Helvetica-Bold').text('Fournisseur : ', MARGIN, infoY, { continued: true });
+      doc.font('Helvetica').text(fiche.fournisseur_nom || '-');
+      doc.font('Helvetica-Bold').text('Date : ', MARGIN + 300, infoY, { continued: true });
+      doc.font('Helvetica').text(formatDate(fiche.date_entree));
+
+      infoY += 16;
+      doc.font('Helvetica-Bold').text('N° BL fournisseur : ', MARGIN, infoY, { continued: true });
+      doc.font('Helvetica').text(fiche.numero_bl || '-');
+      doc.font('Helvetica-Bold').text('N° fiche de besoin : ', MARGIN + 300, infoY, { continued: true });
+      doc.font('Helvetica').text(fiche.numero_fiche_besoin || '-');
+
+      infoY += 26;
+
+      // === TABLEAU ===
+      const colW = [230, 110, 60, 55];
+      const colX = [MARGIN, MARGIN + 230, MARGIN + 340, MARGIN + 400];
+      const headers = ['Article', 'N° Souche', 'Quantité', 'Unité'];
+      const HEADER_H = 20;
+      const maxBottom = PAGE_H - 140;
+
+      function drawHeader(y) {
+        doc.rect(MARGIN, y, CONTENT_W, HEADER_H).fill(BLACK);
+        doc.fillColor(WHITE).font('Helvetica-Bold').fontSize(9);
+        for (let i = 0; i < headers.length; i++) {
+          doc.text(headers[i], colX[i] + 4, y + 5, { width: colW[i] - 8, align: i === 0 ? 'left' : 'center' });
+        }
+        doc.fillColor(BLACK);
+      }
+
+      drawHeader(infoY);
+      let rowY = infoY + HEADER_H;
+
+      for (let i = 0; i < lignes.length; i++) {
+        const l = lignes[i];
+        if (rowY + 20 > maxBottom) {
+          doc.addPage();
+          rowY = MARGIN + 10;
+          drawHeader(rowY);
+          rowY += HEADER_H;
+        }
+        if (i % 2 === 0) {
+          doc.rect(MARGIN, rowY, CONTENT_W, 20).fill(LIGHT_GRAY);
+          doc.fillColor(BLACK);
+        }
+        doc.font('Helvetica').fontSize(9);
+        doc.text(String(l.article_nom || '-'), colX[0] + 4, rowY + 4, { width: colW[0] - 8 });
+        const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
+        doc.text(plage, colX[1] + 4, rowY + 4, { width: colW[1] - 8, align: 'center' });
+        doc.text(String(l.quantite), colX[2] + 4, rowY + 4, { width: colW[2] - 8, align: 'center' });
+        doc.text(ficheUniteLabel(l.unite), colX[3] + 4, rowY + 4, { width: colW[3] - 8, align: 'center' });
+        rowY += 20;
+      }
+
+      // === SIGNATURES ===
+      let sigY = Math.max(rowY + 40, PAGE_H - 130);
+      doc.moveTo(MARGIN, sigY).lineTo(MARGIN + 180, sigY).strokeColor(BLACK).lineWidth(0.5).stroke();
+      doc.fontSize(9).font('Helvetica-Bold').text('LIVREUR', MARGIN, sigY + 5);
+      doc.moveTo(PAGE_W - MARGIN - 180, sigY).lineTo(PAGE_W - MARGIN, sigY).stroke();
+      doc.text('GESTIONNAIRE DE STOCK', PAGE_W - MARGIN - 180, sigY + 5);
+
+      // === PIED DE PAGE ===
+      doc.fontSize(7).font('Helvetica').fillColor(MEDIUM_GRAY);
+      doc.text('Document genere par le systeme en l\'absence de bon de livraison fournisseur — Nizar Stock', MARGIN, PAGE_H - 35, { align: 'center', width: CONTENT_W });
+
+      doc.end();
+      stream.on('finish', () => resolve('/uploads/' + filename));
+      stream.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
+
 // Libelle d'unite pour le PDF (meme rendu que l'UI)
 function uniteLabel(u) {
   const map = {
@@ -277,4 +395,4 @@ function formatDate(isoStr) {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-module.exports = { generateFichePDF, generateStockPDF };
+module.exports = { generateFichePDF, generateStockPDF, generateBonLivraisonPDF };
