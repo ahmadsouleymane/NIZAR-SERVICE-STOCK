@@ -399,7 +399,27 @@ var Entrees = {
         var preview = document.getElementById('preview-bl');
         if (preview) {
           preview.innerHTML = '<span class="badge badge-success">Genere</span><br>' +
-            '<a href="' + UI.escapeHtml(API.getEntreePdfUrl(id)) + '" target="_blank" class="text-sm">Voir le PDF</a>';
+            '<a href="#" id="lien-pdf-bl" class="text-sm">Voir le PDF</a>';
+          var lien = document.getElementById('lien-pdf-bl');
+          if (lien) {
+            lien.addEventListener('click', function(e) {
+              e.preventDefault();
+              // GET /api/entrees/:id/pdf est protege par Bearer token : un lien nu
+              // 401 systématiquement. On fetch avec le header puis on ouvre le blob.
+              var token = API.getToken();
+              fetch(API.getEntreePdfUrl(id), { headers: { 'Authorization': 'Bearer ' + token } })
+                .then(function(res) {
+                  if (!res.ok) throw new Error('Erreur');
+                  return res.blob();
+                })
+                .then(function(blob) {
+                  var url = URL.createObjectURL(blob);
+                  window.open(url, '_blank');
+                  setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+                })
+                .catch(function() { UI.toast('Erreur lors du chargement du PDF.', 'error'); });
+            });
+          }
         }
         self._refreshValiderBtn();
         UI.toast('Bon de livraison genere.', 'success');
