@@ -5,7 +5,7 @@ var GlobalSearch = {
   _input: null,
   _results: null,
   _selected: 0,
-  _matches: { articles: [], series: [] },
+  _matches: { articles: [], series: [], fiches: [] },
 
   init: function() {
     if (this._init) return;
@@ -67,13 +67,13 @@ var GlobalSearch = {
     this._panel.style.display = 'none';
     this._input.value = '';
     this._results.innerHTML = '';
-    this._matches = { articles: [], series: [] };
+    this._matches = { articles: [], series: [], fiches: [] };
     this._selected = 0;
   },
 
   _onSearch: function() {
     var q = this._input.value.trim();
-    if (!q) { this._results.innerHTML = ''; this._matches = { articles: [], series: [] }; return; }
+    if (!q) { this._results.innerHTML = ''; this._matches = { articles: [], series: [], fiches: [] }; return; }
 
     var self = this;
     this._results.innerHTML = '<div style="padding:0.5rem 0.25rem;color:#6B7280;font-size:0.85rem">Recherche...</div>';
@@ -91,9 +91,10 @@ var GlobalSearch = {
   _renderResults: function(q) {
     var arts = this._matches.articles || [];
     var series = this._matches.series || [];
+    var fiches = this._matches.fiches || [];
     var html = '';
 
-    if (!arts.length && !series.length) {
+    if (!arts.length && !series.length && !fiches.length) {
       this._results.innerHTML = '<div style="padding:0.75rem;color:#6B7280;font-size:0.85rem;text-align:center">Aucun résultat pour « ' + UI.escapeHtml(q) + ' »</div>';
       return;
     }
@@ -109,6 +110,16 @@ var GlobalSearch = {
       for (var j = 0; j < series.length; j++) {
         var so = series[j];
         html += this._itemHtml(arts.length + j, 'serie', 'Souche n° ' + UI.escapeHtml(so.numero_debut) + ' — ' + UI.escapeHtml(so.numero_fin), UI.escapeHtml(so.article_nom) + ' <span style="color:#6B7280">' + UI.escapeHtml(so.reference) + '</span>');
+      }
+    }
+    if (fiches.length) {
+      html += '<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;padding:0.25rem 0.375rem">Bons de réception</div>';
+      for (var k = 0; k < fiches.length; k++) {
+        var f = fiches[k];
+        var statut = f.statut === 'envoyee' ? 'Sortie' : (f.statut === 'signee' ? 'OK' : 'Archivée');
+        html += this._itemHtml(arts.length + series.length + k, 'fiche',
+          'N° ' + UI.escapeHtml(f.reference),
+          UI.escapeHtml(f.localite_nom || '-') + ' <span style="color:#6B7280">' + UI.formatDate(f.date_creation) + ' · ' + statut + '</span>');
       }
     }
 
@@ -150,15 +161,19 @@ var GlobalSearch = {
     if (idx < 0 || idx >= items.length) return;
     var kind = items[idx].getAttribute('data-kind');
     var artsLen = (this._matches.articles || []).length;
+    var seriesLen = (this._matches.series || []).length;
     var q = this._input.value.trim();
 
     if (kind === 'article') {
       var art = this._matches.articles[idx];
       if (art) this._gotoArticle(art);
-    } else {
+    } else if (kind === 'serie') {
       var ser = this._matches.series[idx - artsLen];
       var num = /^\d+$/.test(q) ? q : (ser ? ser.numero_debut : '');
       if (ser) this._gotoSerie(num);
+    } else if (kind === 'fiche') {
+      var fiche = this._matches.fiches[idx - artsLen - seriesLen];
+      if (fiche) this._gotoFiche(fiche);
     }
     this._close();
   },
@@ -185,5 +200,16 @@ var GlobalSearch = {
       var btn = document.getElementById('btn-souche-search');
       if (input && btn) { input.value = String(numero); btn.click(); }
     }, 150);
+  },
+
+  // Ouvre la page « Sortie » et affiche le détail du bon de réception trouvé
+  _gotoFiche: function(fiche) {
+    window.location.hash = 'fiches';
+    var self = this;
+    setTimeout(function() {
+      if (typeof Fiches !== 'undefined' && Fiches._viewFiche) {
+        try { Fiches._viewFiche(fiche.id); } catch (e) { /* le détail reste accessible via la liste */ }
+      }
+    }, 300);
   }
 };

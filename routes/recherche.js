@@ -36,7 +36,17 @@ router.get('/', authenticate, (req, res) => {
     `).all(num, num, like, like);
   }
 
-  res.json({ articles, series });
+  // Bons de réception : recherche par référence (le « N° » du document) ou destination
+  const fiches = db.prepare(`
+    SELECT fr.id, fr.reference, fr.date_creation, fr.statut, l.nom AS localite_nom
+    FROM fiches_reception fr
+    LEFT JOIN localites l ON fr.localite_id = l.id
+    WHERE fr.reference LIKE ? OR l.nom LIKE ?
+    ORDER BY fr.id DESC
+    LIMIT 8
+  `).all(like, like);
+
+  res.json({ articles, series, fiches });
 });
 
 module.exports = router;

@@ -56,17 +56,24 @@ function generateFichePDF(fiche, lignes) {
         const destFull = fiche.localite_nom +
           (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
 
+        // === N° (référence de la fiche) : remplace « 000 » du modele ===
+        // On couvre l'ancien « 000 » par un fond blanc puis on ecrit la reference
+        page.drawRectangle({ x: 293, y: height - 133, width: 42, height: 17, color: rgb(1, 1, 1) });
+        page.drawText(fiche.reference || '', {
+          x: 297, y: base(122, 9.5), size: 9.5, font, color
+        });
+
         // === DATE / DESTINATION (alignés sur les libellés du modele) ===
         page.drawText(formatDate(fiche.date_envoi || fiche.date_creation), {
-          x: 432, y: base(163, 10), size: 10, font, color
+          x: 432, y: base(186, 10), size: 10, font, color
         });
         page.drawText(destFull, {
-          x: 462, y: base(187, 9.5), size: 9.5, font, color
+          x: 462, y: base(210, 9.5), size: 9.5, font, color
         });
 
         // === TABLEAU : UNE ligne par article (aucune ligne vide) ===
-        const firstRowTop = 232;   // sous l'en-tete (en-tete a y≈210)
-        const available = 505 - firstRowTop;
+        const firstRowTop = 255;   // premiere ligne sous l'en-tete (en-tete a y≈232)
+        const available = 525 - firstRowTop;
         const spacing = lignes.length ? Math.min(22, Math.max(12, Math.floor(available / lignes.length))) : 22;
         const maxRows = Math.floor(available / 12);
         let truncated = false;
