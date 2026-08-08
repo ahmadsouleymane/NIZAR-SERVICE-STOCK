@@ -42,6 +42,10 @@ const db = initDB(paths.dbPath);
 // Inactif en local (GH_BACKUP_REPO non defini).
 require('./services/cloud_backup').start(db);
 
+// Synchronisation des uploads (photos, PDF) vers Cloudflare R2 : restaure au
+// demarrage, synchronise toutes les ~5 min et a l'arret. Inactif si R2_* non definis.
+require('./services/r2_backup').start(paths.uploadDir);
+
 // Injecter db dans toutes les requetes
 app.use((req, res, next) => {
   req.db = db;

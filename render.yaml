@@ -37,3 +37,16 @@ services:
       # Chemin du fichier de base dans le dépôt de sauvegarde
       - key: GH_BACKUP_PATH
         value: data/nizar.db
+      # Sauvegarde des photos/PDF vers Cloudflare R2 (gratuit, 10 Go) — à renseigner :
+      #   R2_ENDPOINT          = https://<accountid>.r2.cloudflarestorage.com
+      #   R2_ACCESS_KEY_ID     = clé d'accès R2 (type S3)
+      #   R2_SECRET_ACCESS_KEY = secret d'accès R2
+      #   R2_BUCKET            = nom du bucket (ex: nizar-uploads)
+      - key: R2_ENDPOINT
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false

@@ -10,6 +10,7 @@
     "db:init": "node database/init.js"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1106.0",
     "bcryptjs": "^2.4.3",
     "better-sqlite3": "^11.0.0",
     "compression": "^1.8.1",

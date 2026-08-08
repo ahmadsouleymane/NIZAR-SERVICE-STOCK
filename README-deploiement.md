@@ -58,10 +58,33 @@ node scripts/push_initial_backup.js
 
 ## Sauvegarde automatique (comment ça marche)
 
-`services/cloud_backup.js` :
+`services/cloud_backup.js` (base de données) :
 - **au démarrage** → télécharge `nizar.db` depuis le dépôt privé (si le fichier local est vide) ;
 - **toutes les ~3 min** → snapshot cohérent (`VACUUM INTO`) + upload GitHub ;
 - **à l'arrêt (SIGTERM)** → dernier upload avant redéploiement.
+
+`services/r2_backup.js` (photos / PDF) :
+- **au démarrage** → télécharge depuis Cloudflare R2 les fichiers manquants ;
+- **toutes les ~5 min** → upload vers R2 des nouveaux fichiers ;
+- **à l'arrêt (SIGTERM)** → dernière synchronisation avant redéploiement.
+
+## Réveil du serveur (plan gratuit)
+
+Le service dort après 15 min d'inactivité. `public/js/wake.js` :
+- **pré-réveil** dès l'ouverture de la page (le serveur démarre pendant la connexion) ;
+- **écran « Réveil du serveur… »** qui réessaie automatiquement ;
+- si une requête traîne (cold start) → **écran de chargement** puis reprise auto.
+
+## 6. Cloudflare R2 — sauvegarde des photos (optionnel mais recommandé)
+
+R2 conserve les photos/scans au-delà des redéploiements (10 Go gratuits).
+
+1. Sur **https://dash.cloudflare.com** → **R2** → **Create bucket** → nom `nizar-uploads`.
+2. **Manage R2 API Tokens** → *Create API token* → copie **Access Key ID** et **Secret Access Key**.
+3. Dans Render, ajoute les variables :
+   - `R2_ENDPOINT` → `https://<accountid>.r2.cloudflarestorage.com` (id dans l'URL de ton dashboard)
+   - `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` → ton jeton
+   - `R2_BUCKET` → `nizar-uploads`
 
 ## Variables d'environnement
 
@@ -72,15 +95,17 @@ node scripts/push_initial_backup.js
 | `GH_BACKUP_TOKEN` | Jeton GitHub (accès Contents read/write) |
 | `GH_BACKUP_PATH` | Chemin du fichier de base dans le dépôt (défaut `data/nizar.db`) |
 | `GH_BACKUP_INTERVAL_MIN` | Fréquence de sauvegarde en minutes (défaut 3) |
+| `R2_ENDPOINT` | Endpoint S3 de ton bucket R2 |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Jeton API R2 |
+| `R2_BUCKET` | Nom du bucket R2 (ex: `nizar-uploads`) |
+| `R2_SYNC_INTERVAL_MIN` | Fréquence de synchro photos en minutes (défaut 5) |
 | `DB_PATH` / `UPLOAD_DIR` | Dossiers dans le conteneur (éphémères, restaurés/sauvegardés) |
 | `PORT` | Port d'écoute (3000) |
 
 ## ⚠️ Points d'attention
 
-- **Photos/scans** : sur le plan gratuit, les photos uploadées ne sont **pas**
-  encore sauvegardées (disque éphémère). À traiter (Cloudflare R2 gratuit 10 Go,
-  ou inclure le dossier `public/uploads` dans la sauvegarde) — prochaine étape.
 - **Heures d'instance** : l'app allumée 24/7 ≈ 744 h/mois (limite 750 h). Vérifie
-  la page Billing une fois par mois.
+  la page Billing une fois par mois (ou laisse dormir : usage réel ≈ 100-200 h).
+- **Réveil** : ~1 min de chargement après 15 min d'inactivité (écran de chargement intégré).
 - **GitHub Actions** : le workflow `deploy.yml` vérifie la syntaxe à chaque push ;
   Render redéploie automatiquement sur push (pas besoin de webhook).
