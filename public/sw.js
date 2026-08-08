@@ -2,7 +2,7 @@
 // Strategie NETWORK-FIRST : on sert toujours la derniere version des fichiers
 // (l'app change souvent), le cache ne sert qu'en secours hors-ligne.
 // Version de cache incrementee a chaque deploiement pour purger l'ancien.
-var CACHE_NAME = 'nizar-stock-v5';
+var CACHE_NAME = 'nizar-stock-v6';
 var STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -14,11 +14,12 @@ var STATIC_ASSETS = [
   '/js/articles.js',
   '/js/mouvements.js',
   '/js/fiches.js',
+  '/js/fiches_besoin.js',
   '/js/entrees.js',
   '/js/retours.js',
   '/js/souches.js',
   '/js/inventaire.js',
-  '/js/inventaire_stock.js',
+  '/js/grandlivre.js',
   '/js/reportui.js',
   '/js/rapports.js',
   '/js/parametres.js',
