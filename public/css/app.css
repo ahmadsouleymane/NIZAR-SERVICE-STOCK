@@ -1102,20 +1102,6 @@ td.actions { display: flex; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; 
 .summary-item { display: flex; align-items: center; gap: 0.375rem; color: var(--color-fg-muted); }
 .summary-item strong { font-family: var(--font-mono); font-weight: 700; color: var(--color-fg); }
 
-/* ------------------------------------------------------------
-   20. LIGNES D'ARTICLE (FORMULAIRES)
-   ------------------------------------------------------------ */
-.ligne-article {
-  display: grid;
-  grid-template-columns: 2fr 1fr auto auto auto;
-  gap: 0.5rem;
-  align-items: end;
-  margin-bottom: 0.5rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--color-border);
-}
-@media (max-width: 600px) { .ligne-article { grid-template-columns: 1fr 1fr; gap: 0.375rem; } }
-
 /* Champs « numéro début/fin » (souches numérotées) — défaut sûr, les
    styles inline de entrees.js / fiches.js pilotent display/gap. */
 .num-fields { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }

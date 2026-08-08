@@ -186,16 +186,17 @@ var Entrees = {
     var h = '';
     for (var k = 0; k < this._lignes.length; k++) {
       var l = this._lignes[k];
-      var showNum = l.article_type === 'numerote' ? 'flex' : 'none';
-      h += '<div class="ligne-article" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
+      var showNum = l.article_type === 'numerote';
+      h += '<div style="border:1px solid var(--color-border);border-radius:10px;padding:10px;margin-bottom:8px">' +
         '<div class="art-ac" data-idx="' + k + '"></div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">' +
+        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px">' +
         '<input type="number" class="form-input qte-entree" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px;width:90px">' +
-        '<div class="num-fields" data-idx="' + k + '" style="display:' + showNum + ';gap:6px;flex-wrap:wrap">' +
-        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° debut" style="min-height:40px;width:110px">' +
+        '<div class="num-fields" data-idx="' + k + '" style="display:' + (showNum ? 'flex' : 'none') + ';gap:8px;align-items:center">' +
+        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° début" style="min-height:40px;width:110px">' +
+        '<span class="text-sm text-muted" style="white-space:nowrap">—</span>' +
         '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px;width:110px">' +
         '</div>' +
-        '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px">&times;</button>' +
+        '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px" title="Retirer">&times;</button>' +
         '</div></div>';
     }
     lc.innerHTML = h;

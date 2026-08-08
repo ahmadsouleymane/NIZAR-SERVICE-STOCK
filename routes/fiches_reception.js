@@ -75,7 +75,7 @@ router.get('/:id', authenticate, (req, res) => {
 // POST /api/fiches — creer un envoi + generer le PDF automatiquement
 router.post('/', authenticate, async (req, res) => {
   const db = req.db;
-  const { localite_id, articles, notes, destinataire } = req.body;
+  const { localite_id, articles, notes } = req.body;
 
   if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
@@ -100,9 +100,9 @@ router.post('/', authenticate, async (req, res) => {
   // Transaction DB
   const transaction = db.transaction(() => {
     const result = db.prepare(`
-      INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, destinataire, date_envoi)
-      VALUES (?, ?, ?, 'envoyee', ?, ?, datetime('now','localtime'))
-    `).run(reference, localite_id, req.user.id, notes || null, destinataire || null);
+      INSERT INTO fiches_reception (reference, localite_id, user_id, statut, notes, date_envoi)
+      VALUES (?, ?, ?, 'envoyee', ?, datetime('now','localtime'))
+    `).run(reference, localite_id, req.user.id, notes || null);
 
     ficheId = result.lastInsertRowid;
 
@@ -139,7 +139,7 @@ router.post('/', authenticate, async (req, res) => {
       }
 
       insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
-      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, destinataire || null);
+      insertMvt.run(art.article_id, art.quantite, reference, req.user.id, localite_id, ficheId, null);
       updateStock.run(art.quantite, art.article_id);
     }
   });

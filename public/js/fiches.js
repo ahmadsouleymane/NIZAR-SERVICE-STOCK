@@ -151,7 +151,6 @@ var Fiches = {
 
       var body =
         '<div class="form-group"><label class="form-label">Destination *</label><select class="form-select" id="envoi-loc">' + locOptions + '</select></div>' +
-        '<div class="form-group"><label class="form-label">Destinataire (qui recoit)</label><input type="text" class="form-input" id="envoi-destinataire" placeholder="Nom de la personne / du service..."></div>' +
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-envoi"></div>';
 
@@ -174,16 +173,17 @@ var Fiches = {
     var h = '';
     for (var k = 0; k < this._lignes.length; k++) {
       var l = this._lignes[k];
-      var showNum = l.article_type === 'numerote' ? 'flex' : 'none';
-      h += '<div class="ligne-article" style="border:1px solid var(--color-border);border-radius:10px;padding:8px;margin-bottom:8px">' +
+      var showNum = l.article_type === 'numerote';
+      h += '<div style="border:1px solid var(--color-border);border-radius:10px;padding:10px;margin-bottom:8px">' +
         '<div class="art-envoi-ac" data-idx="' + k + '"></div>' +
-        '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px">' +
+        '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px">' +
         '<input type="number" class="form-input qte-envoi" data-idx="' + k + '" value="' + (l.quantite || 1) + '" min="1" placeholder="Qte" style="min-height:40px;width:90px">' +
-        '<div class="num-fields" data-idx="' + k + '" style="display:' + showNum + ';gap:6px;flex-wrap:wrap">' +
-        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° debut" style="min-height:40px;width:110px">' +
+        '<div class="num-fields" data-idx="' + k + '" style="display:' + (showNum ? 'flex' : 'none') + ';gap:8px;align-items:center">' +
+        '<input type="text" class="form-input num-debut" data-idx="' + k + '" value="' + (l.numero_debut || '') + '" placeholder="N° début" style="min-height:40px;width:110px">' +
+        '<span class="text-sm text-muted" style="white-space:nowrap">—</span>' +
         '<input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px;width:110px">' +
         '</div>' +
-        '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px">&times;</button>' +
+        '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px" title="Retirer">&times;</button>' +
         '</div></div>';
     }
     lc.innerHTML = h;
@@ -241,7 +241,6 @@ var Fiches = {
 
   _saveEnvoi: function(modal) {
     var locId = parseInt(document.getElementById('envoi-loc').value);
-    var destinataire = document.getElementById('envoi-destinataire').value.trim() || null;
 
     if (!locId) { UI.toast('Choisissez une destination.', 'error'); return; }
 
@@ -261,7 +260,7 @@ var Fiches = {
       printWin.document.write('<html><body style="font-family:sans-serif;color:#6B7280;padding:40px;text-align:center">Création de la fiche…</body></html>');
     }
 
-    API.createFiche({ localite_id: locId, articles: arts, destinataire: destinataire })
+    API.createFiche({ localite_id: locId, articles: arts })
       .then(function(data) {
         var f = data.fiche;
         UI.toast('Sortie validée — Fiche ' + f.reference + ' créée. PDF généré.', 'success');
@@ -293,8 +292,7 @@ var Fiches = {
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.statut === 'envoyee' ? 'badge-info' : (f.statut === 'signee' ? 'badge-success' : 'badge-neutral')) + '">' + (f.statut === 'envoyee' ? 'Sortie validee' : (f.statut === 'signee' ? 'OK — Retour recu' : 'Archivee')) + '</span></div></div>' +
         (f.numero_facture ? '<div class="flex-between mb-md"><div><strong>N° facture:</strong> ' + UI.escapeHtml(f.numero_facture) + '</div></div>' : '') +
-        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>' +
-        (f.destinataire ? '<div class="flex-between mb-md"><div><strong>Destinataire:</strong> ' + UI.escapeHtml(f.destinataire) + '</div></div>' : '');
+        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>';
 
       if (f.notes) html += '<p class="mb-md"><strong>Notes:</strong> ' + UI.escapeHtml(f.notes) + '</p>';
 
