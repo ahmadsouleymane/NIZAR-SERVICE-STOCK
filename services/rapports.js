@@ -125,10 +125,14 @@ function fillPeriod(rows, groupBy, debut, fin) {
       cur.setDate(cur.getDate() + 1);
     }
   } else {
-    while (cur <= d1) {
-      const k = monthKey(cur);
-      if (!out.length || out[out.length - 1].libelle !== k) out.push(map[k] || emptyPeriodRow(k));
-      cur.setMonth(cur.getMonth() + 1);
+    // Itère sur les premiers jours de chaque mois (borné par mois(debut)..mois(fin))
+    const startMonth = new Date(d0.getFullYear(), d0.getMonth(), 1);
+    const endMonth = new Date(d1.getFullYear(), d1.getMonth(), 1);
+    const m = new Date(startMonth);
+    while (m <= endMonth) {
+      const k = monthKey(m);
+      out.push(map[k] || emptyPeriodRow(k));
+      m.setMonth(m.getMonth() + 1);
     }
   }
   return out;
