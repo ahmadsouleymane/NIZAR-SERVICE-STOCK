@@ -9,7 +9,7 @@
   var ALL_ITEMS = [
     { id: 'dashboard', label: 'Tableau de bord', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>' },
     { id: 'articles', label: 'Articles', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>' },
-    { id: 'fiches', label: 'Fiches de réception', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>' },
+    { id: 'fiches', label: 'Sortie', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15l3-3 3 3"/></svg>' },
     { id: 'entrees', label: 'Entrées', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' },
     { id: 'mouvements', label: 'Mouvements', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>' },
     { id: 'fournisseurs', label: 'Fournisseurs', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>' },
@@ -17,21 +17,22 @@
     { id: 'retours', label: 'Retours carnets', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>' },
     { id: 'souches', label: 'Souches (n° recherche)', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg>' },
     { id: 'billets', label: 'Billets en circulation', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9V5a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 010 4v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4a2 2 0 010-4z"/><line x1="7" y1="9" x2="7" y2="15"/><line x1="11" y1="9" x2="11" y2="15"/></svg>' },
-    { id: 'inventaire', label: 'Inventaire', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' },
+    { id: 'inventaire', label: 'Inventaire', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M3 21h18"/><path d="M9 21v-6h6v6"/></svg>' },
+    { id: 'comptage', label: 'Comptage', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' },
     { id: 'rapports', label: 'Rapports', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M8 13h2"/><path d="M8 17h2"/><path d="M14 13h2"/><path d="M14 17h2"/></svg>' },
     { id: 'parametres', label: 'Paramètres', icon: '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 012.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>' }
   ];
 
   // 4 items principaux pour la bottom nav (autour du bouton d'action central)
   var BOTTOM_ITEMS = ['dashboard', 'articles', 'fiches', 'entrees'];
-  var BOTTOM_LABELS = { dashboard: 'Accueil', articles: 'Articles', fiches: 'Sorties', entrees: 'Entrées' };
+  var BOTTOM_LABELS = { dashboard: 'Accueil', articles: 'Articles', fiches: 'Sortie', entrees: 'Entrées' };
 
   // Actions rapides accessibles via le bouton central (+)
   var QUICK_ACTIONS = [
     { label: 'Nouvelle entrée', page: 'entrees', open: true },
     { label: 'Nouvelle sortie', page: 'fiches', open: true },
     { label: 'Nouveau retour', page: 'retours', open: true },
-    { label: 'Nouveau comptage', page: 'inventaire', open: true },
+    { label: 'Nouveau comptage', page: 'comptage', open: true },
     { label: 'Mouvements', page: 'mouvements' },
     { label: 'Souches (n° recherche)', page: 'souches' },
     { label: 'Billets en circulation', page: 'billets' },
@@ -41,7 +42,7 @@
     { label: 'Paramètres', page: 'parametres' }
   ];
   // Méthode « nouveau » à ouvrir automatiquement après navigation
-  var QUICK_OPEN = { entrees: '_showForm', fiches: '_showEnvoiForm', retours: '_showForm', inventaire: '_showForm' };
+  var QUICK_OPEN = { entrees: '_showForm', fiches: '_showEnvoiForm', retours: '_showForm', comptage: '_showForm' };
   var __pendingAction = null;
 
   // Construire les navigations
@@ -52,13 +53,13 @@
     // Drawer : tous les items
     var drawerHtml = '';
     drawerHtml += '<div class="drawer-section-label">Principal</div>';
-    var mainIds = ['dashboard', 'articles', 'fiches', 'entrees', 'mouvements'];
+    var mainIds = ['dashboard', 'articles', 'inventaire', 'fiches', 'entrees', 'mouvements'];
     for (var i = 0; i < mainIds.length; i++) {
       var item = findItem(mainIds[i]);
       if (item) drawerHtml += '<a href="#' + item.id + '" data-page="' + item.id + '">' + item.icon + '<span>' + item.label + '</span></a>';
     }
     drawerHtml += '<div class="drawer-section-label">Operations</div>';
-    var opIds = ['retours', 'souches', 'billets', 'inventaire'];
+    var opIds = ['retours', 'souches', 'billets', 'comptage'];
     for (var o = 0; o < opIds.length; o++) {
       var oitem = findItem(opIds[o]);
       if (oitem) drawerHtml += '<a href="#' + oitem.id + '" data-page="' + oitem.id + '">' + oitem.icon + '<span>' + oitem.label + '</span></a>';
@@ -240,7 +241,7 @@
       entrees: typeof Entrees !== 'undefined' ? Entrees : null,
       fiches: typeof Fiches !== 'undefined' ? Fiches : null,
       retours: typeof Retours !== 'undefined' ? Retours : null,
-      inventaire: typeof Inventaire !== 'undefined' ? Inventaire : null
+      comptage: typeof Inventaire !== 'undefined' ? Inventaire : null
     };
     var m = pagesMap[page];
     if (m && typeof m[method] === 'function') {
@@ -263,7 +264,8 @@
       retours: typeof Retours !== 'undefined' ? Retours : null,
       souches: typeof Souches !== 'undefined' ? Souches : null,
       billets: typeof Billets !== 'undefined' ? Billets : null,
-      inventaire: typeof Inventaire !== 'undefined' ? Inventaire : null,
+      inventaire: typeof InventaireStock !== 'undefined' ? InventaireStock : null,
+      comptage: typeof Inventaire !== 'undefined' ? Inventaire : null,
       rapports: typeof Rapports !== 'undefined' ? Rapports : null,
       parametres: typeof Parametres !== 'undefined' ? Parametres : null
     };

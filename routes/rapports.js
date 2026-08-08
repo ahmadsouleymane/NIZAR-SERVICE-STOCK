@@ -28,7 +28,8 @@ router.get('/stock', authenticate, async (req, res) => {
     { header: 'Stock minimum', key: 'stock_min', width: 15 },
     { header: 'Statut', key: 'statut', width: 15 },
     { header: 'Prix unitaire', key: 'prix_unitaire', width: 15 },
-    { header: 'Unite', key: 'unite', width: 10 },
+    { header: 'Valeur stock (FCFA)', key: 'valeur_stock', width: 18 },
+    { header: 'Unite', key: 'unite', width: 12 },
     { header: 'Fournisseur', key: 'fournisseur', width: 25 }
   ];
 
@@ -39,7 +40,7 @@ router.get('/stock', authenticate, async (req, res) => {
 
   for (const a of articles) {
     const statut = a.stock_actuel <= 0 ? 'RUPTURE' : a.stock_actuel <= a.stock_min ? 'ALERTE' : 'OK';
-    const row = sheet.addRow({ ...a, statut });
+    const row = sheet.addRow({ ...a, statut, valeur_stock: (a.prix_unitaire || 0) * (a.stock_actuel || 0) });
 
     // Couleur conditionnelle
     if (statut === 'RUPTURE') {
@@ -84,7 +85,7 @@ router.get('/mouvements', authenticate, async (req, res) => {
   if (fin) { whereClause += ' AND m.date <= ?'; params.push(fin + ' 23:59:59'); }
 
   const mouvements = db.prepare(`
-    SELECT m.date, a.reference, a.nom as article, m.type, m.quantite, m.motif, m.demandeur, u.username
+    SELECT m.date, a.reference, a.nom as article, m.type, m.quantite, m.demandeur, u.username
     FROM mouvements m
     LEFT JOIN articles a ON m.article_id = a.id
     LEFT JOIN users u ON m.user_id = u.id
@@ -101,7 +102,6 @@ router.get('/mouvements', authenticate, async (req, res) => {
     { header: 'Article', key: 'article', width: 30 },
     { header: 'Type', key: 'type', width: 10 },
     { header: 'Quantite', key: 'quantite', width: 12 },
-    { header: 'Motif', key: 'motif', width: 25 },
     { header: 'Demandeur', key: 'demandeur', width: 20 },
     { header: 'Saisi par', key: 'username', width: 20 }
   ];
@@ -188,6 +188,7 @@ router.get('/sorties-agence', authenticate, async (req, res) => {
   if (debut) { whereClause += ' AND m.date >= ?'; params.push(debut); }
   if (fin) { whereClause += ' AND m.date <= ?'; params.push(fin + ' 23:59:59'); }
 
+  // Resume par localite
   const rows = db.prepare(`
     SELECT l.nom as localite,
            COUNT(*) as nb_sorties,
@@ -199,6 +200,21 @@ router.get('/sorties-agence', authenticate, async (req, res) => {
     ${whereClause}
     GROUP BY m.localite_id
     ORDER BY nb_sorties DESC
+  `).all(...params);
+
+  // Detail par localite : quels articles, quelles quantites, quelle valeur
+  const detail = db.prepare(`
+    SELECT l.nom as localite,
+           a.reference, a.nom as article, a.unite,
+           SUM(m.quantite) as quantite,
+           COALESCE(a.prix_unitaire, 0) as prix_unitaire,
+           SUM(m.quantite * COALESCE(a.prix_unitaire, 0)) as valeur
+    FROM mouvements m
+    LEFT JOIN localites l ON m.localite_id = l.id
+    LEFT JOIN articles a ON m.article_id = a.id
+    ${whereClause}
+    GROUP BY m.localite_id, m.article_id
+    ORDER BY localite ASC, quantite DESC
   `).all(...params);
 
   const workbook = new ExcelJS.Workbook();
@@ -217,6 +233,26 @@ router.get('/sorties-agence', authenticate, async (req, res) => {
 
   for (const r of rows) {
     sheet.addRow(r);
+  }
+
+  // Feuille detail : articles et quantites sortis pour chaque agence
+  const sheetDetail = workbook.addWorksheet('Detail par agence');
+  sheetDetail.columns = [
+    { header: 'Localite', key: 'localite', width: 25 },
+    { header: 'Reference', key: 'reference', width: 15 },
+    { header: 'Article', key: 'article', width: 30 },
+    { header: 'Unite', key: 'unite', width: 12 },
+    { header: 'Quantite', key: 'quantite', width: 12 },
+    { header: 'Prix unitaire (FCFA)', key: 'prix_unitaire', width: 20 },
+    { header: 'Valeur (FCFA)', key: 'valeur', width: 18 }
+  ];
+
+  const headerDetail = sheetDetail.getRow(1);
+  headerDetail.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerDetail.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+
+  for (const d of detail) {
+    sheetDetail.addRow(d);
   }
 
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

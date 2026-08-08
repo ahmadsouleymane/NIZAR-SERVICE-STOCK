@@ -230,6 +230,10 @@ function initDB(dbPath) {
   ensureColumn(db, 'fiches_entree', 'validee', 'INTEGER NOT NULL DEFAULT 0');
   ensureColumn(db, 'fiches_entree', 'articles_json', 'TEXT');
 
+  // Migration des unites : « piece » devient « unite », et les unites supprimees
+  // (« boite », « flacon », « ramette ») sont remappees sur « unite ».
+  db.exec("UPDATE articles SET unite = 'unite', updated_at = datetime('now','localtime') WHERE unite IN ('piece', 'boite', 'flacon', 'ramette')");
+
   // Migration : les fiches d'entree creees avant le flag validee etaient toutes
   // deja validees (lignes en base). On les marque validee=1 pour ne pas les
   // presenter comme des brouillons en attente de photos. Un vrai brouillon

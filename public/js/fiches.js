@@ -10,8 +10,8 @@ var Fiches = {
     this._hasMore = true;
 
     container.innerHTML =
-      '<div class="card"><div class="card-header flex-between"><h3 class="card-title">Fiches de réception</h3>' +
-      '<button class="btn btn-primary" id="btn-new-envoi"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvel envoi</button>' +
+      '<div class="card"><div class="card-header flex-between"><h3 class="card-title">Sorties</h3>' +
+      '<button class="btn btn-primary" id="btn-new-envoi"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle sortie</button>' +
       '</div>' +
       '<div class="filter-bar">' +
       '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Sortie validée</option><option value="signee">OK — Retour reçu</option><option value="archivee">Archivée</option></select>' +
@@ -80,7 +80,7 @@ var Fiches = {
 
   _renderTable: function(fiches) {
     var el = document.getElementById('fiches-table');
-    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune fiche', 'Créer un envoi', 'btn-new-envoi'); return; }
+    if (!fiches || !fiches.length) { el.innerHTML = UI.renderEmptyState('Aucune sortie', 'Créer une sortie', 'btn-new-envoi'); return; }
 
     var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr><th>Référence</th><th>Date</th><th>Destination</th><th>Statut</th><th>Lignes</th><th>PDF</th><th>Scan</th><th>Actions</th></tr></thead><tbody>';
@@ -155,7 +155,7 @@ var Fiches = {
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-envoi"></div>';
 
-      UI.modal('Nouvel envoi', body, [
+      UI.modal('Nouvelle sortie', body, [
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
         { label: 'Valider la sortie', cls: 'btn-primary', callback: function(m) { self._saveEnvoi(m); } }
       ]);
@@ -200,7 +200,7 @@ var Fiches = {
         search: function(term, cb) {
           API.getArticles({ search: term }).then(function(data) {
             cb(data.articles.map(function(a) {
-              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article };
             }));
           }).catch(function() { cb([]); });
         },

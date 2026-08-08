@@ -64,7 +64,7 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
               const ref = baseRef + (existingCount > 0 ? '-' + (existingCount + 1) : '');
               const result = db.prepare(
                 'INSERT INTO articles (reference, nom, unite, stock_min, type_article, stock_actuel) VALUES (?, ?, ?, 5, ?, 0)'
-              ).run(ref, libelle, 'piece', numeros ? 'numerote' : 'standard');
+              ).run(ref, libelle, 'unite', numeros ? 'numerote' : 'standard');
               article = { id: result.lastInsertRowid };
               imported.articles++;
             }
@@ -82,8 +82,8 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
             // Creer le mouvement (historique — ne modifie pas le stock)
             const dateFormatted = dateStr ? new Date(dateStr).toISOString().split('T')[0] : new Date().toISOString().split('T')[0];
             db.prepare(`
-              INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, date)
-              VALUES (?, 'sortie', ?, 'Import historique', ?, ?, ?)
+              INSERT INTO mouvements (article_id, type, quantite, user_id, localite_id, date)
+              VALUES (?, 'sortie', ?, ?, ?, ?)
             `).run(article.id, quantite, req.user.id, loc ? loc.id : null, dateFormatted);
 
             imported.mouvements++;
@@ -94,35 +94,6 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
       });
 
       transaction();
-
-      // === Mise a jour des stocks depuis Feuil4 (quantites 2026 = stock disponible) ===
-      if (workbook.SheetNames.includes('Feuil4')) {
-        const sheet4 = workbook.Sheets['Feuil4'];
-        const data4 = XLSX.utils.sheet_to_json(sheet4, { header: 1 });
-        const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
-
-        const agg = {};
-        for (let i = 2; i < data4.length; i++) {
-          const r = data4[i];
-          if (!r || !r[0]) continue;
-          const label = String(r[0]).trim();
-          if (/^total/i.test(label)) continue; // ignorer « Total general »
-          const qty = Number(r[1] !== '' && r[1] !== undefined ? r[1] : r[r.length - 1]);
-          const k = norm(label);
-          agg[k] = { label, qty: (agg[k] ? agg[k].qty : 0) + (isNaN(qty) ? 0 : qty) };
-        }
-
-        const allArts = db.prepare('SELECT id, nom FROM articles').all();
-        const byNorm = {};
-        for (const a of allArts) byNorm[norm(a.nom)] = a.id;
-
-        const updateStock = db.prepare("UPDATE articles SET stock_actuel = ?, updated_at = datetime('now','localtime') WHERE id = ?");
-        let stocked = 0;
-        for (const k of Object.keys(agg)) {
-          if (byNorm[k]) { updateStock.run(agg[k].qty, byNorm[k]); stocked++; }
-        }
-        imported.stock = stocked;
-      }
     } else {
       imported.erreurs.push('Feuille "Feuil1" introuvable dans le fichier.');
     }
@@ -137,7 +108,7 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
   // Nettoyer le fichier uploade
   try { fs.unlinkSync(req.file.path); } catch (e) { /* ignore */ }
 
-  res.json({ imported, message: 'Import termine : ' + imported.articles + ' articles, ' + imported.mouvements + ' mouvements, ' + (imported.stock || 0) + ' stocks mis a jour.' });
+  res.json({ imported, message: 'Import termine : ' + imported.articles + ' articles, ' + imported.mouvements + ' mouvements (sorties).' });
 });
 
 module.exports = router;

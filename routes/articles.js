@@ -52,7 +52,7 @@ router.post('/', authenticate, (req, res) => {
   const result = db.prepare(`
     INSERT INTO articles (reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(reference, nom, categorie_id || null, description || null, unite || 'piece', stock_min || 10, prix_unitaire || 0, fournisseur_id || null);
+  `).run(reference, nom, categorie_id || null, description || null, unite || 'unite', stock_min || 10, prix_unitaire || 0, fournisseur_id || null);
 
   const article = db.prepare(`
     SELECT a.*, c.name as categorie_nom, f.nom as fournisseur_nom

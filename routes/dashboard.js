@@ -15,6 +15,10 @@ router.get('/', authenticate, (req, res) => {
     "SELECT COUNT(*) as count FROM commandes WHERE statut IN ('brouillon', 'envoyee')"
   ).get().count;
 
+  const valeurStock = db.prepare(
+    "SELECT COALESCE(SUM(stock_actuel * prix_unitaire), 0) as v FROM articles"
+  ).get().v;
+
   const entreesJour = db.prepare(
     "SELECT COUNT(*) as count FROM fiches_entree WHERE date_entree >= date('now','localtime')"
   ).get().count;
@@ -46,7 +50,7 @@ router.get('/', authenticate, (req, res) => {
   `).all();
 
   res.json({
-    kpi: { totalArticles, alertesStock, mouvementsJour, commandesEnCours, entreesJour },
+    kpi: { totalArticles, alertesStock, mouvementsJour, commandesEnCours, entreesJour, valeurStock },
     entreesRecentes,
     mouvementsRecents,
     topAlertes

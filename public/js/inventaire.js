@@ -6,7 +6,7 @@ var Inventaire = {
     container.innerHTML =
       '<div class="card">' +
       '<div class="card-header flex-between">' +
-      '<h3 class="card-title">Inventaire physique</h3>' +
+      '<h3 class="card-title">Comptage</h3>' +
       '<button class="btn btn-primary" id="btn-new-inventaire">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>' +
       ' Nouveau comptage</button>' +
@@ -42,8 +42,8 @@ var Inventaire = {
       html += '<tr>' +
         '<td>' + UI.formatDate(inv.date_inventaire) + '</td>' +
         '<td><strong>' + UI.escapeHtml(inv.article_nom || '-') + '</strong><br><span class="text-sm text-muted">' + UI.escapeHtml(inv.reference || '') + '</span></td>' +
-        '<td>' + inv.stock_theorique + ' ' + UI.escapeHtml(inv.unite || '') + '</td>' +
-        '<td><strong>' + inv.quantite_comptee + '</strong> ' + UI.escapeHtml(inv.unite || '') + '</td>' +
+        '<td>' + inv.stock_theorique + ' ' + UI.escapeHtml(UI.uniteLabel(inv.unite)) + '</td>' +
+        '<td><strong>' + inv.quantite_comptee + '</strong> ' + UI.escapeHtml(UI.uniteLabel(inv.unite)) + '</td>' +
         '<td><span class="' + ecartCls + '" style="font-weight:700">' + ecartLabel + '</span></td>' +
         '<td>' + UI.escapeHtml(inv.notes || '-') + '</td>' +
         '<td>' + UI.escapeHtml(inv.username || '-') + '</td>' +
@@ -58,7 +58,7 @@ var Inventaire = {
     API.getArticles().then(function(data) {
       var articles = data.articles;
       self._articleItems = articles.map(function(a) {
-        return { id: a.id, label: a.nom, meta: 'Stock theorique: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+        return { id: a.id, label: a.nom, meta: 'Stock theorique: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article };
       });
 
       var body =

@@ -77,7 +77,7 @@ var Retours = {
       var localites = results[1].localites;
 
       self._articleItems = articles.map(function(a) {
-        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+        return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article };
       });
 
       var locOptions = '<option value="">— Siege / aucune —</option>';

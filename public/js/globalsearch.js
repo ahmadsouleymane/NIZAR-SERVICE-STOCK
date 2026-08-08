@@ -101,7 +101,7 @@ var GlobalSearch = {
     if (arts.length) {
       html += '<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;padding:0.25rem 0.375rem">Articles</div>';
       for (var i = 0; i < arts.length; i++) {
-        html += this._itemHtml(i, 'article', UI.escapeHtml(arts[i].nom) + ' <span style="color:#6B7280">' + UI.escapeHtml(arts[i].reference) + '</span>', 'Stock: ' + arts[i].stock_actuel + ' ' + UI.escapeHtml(arts[i].unite));
+        html += this._itemHtml(i, 'article', UI.escapeHtml(arts[i].nom) + ' <span style="color:#6B7280">' + UI.escapeHtml(arts[i].reference) + '</span>', 'Stock: ' + arts[i].stock_actuel + ' ' + UI.escapeHtml(UI.uniteLabel(arts[i].unite)));
       }
     }
     if (series.length) {

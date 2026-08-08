@@ -527,5 +527,16 @@ var UI = {
   formatPrice: function(n) {
     if (!n) return '-';
     return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' F';
+  },
+
+  // Libellé d'unité normalisé : « piece » -> « Unité », etc.
+  uniteLabel: function(u) {
+    if (!u) return '';
+    var map = {
+      'unite': 'Unité', 'piece': 'Unité', 'carton': 'Carton', 'lot': 'Lot',
+      'rouleau': 'Rouleau', 'paquet': 'Paquet', 'boite': 'Boîte',
+      'flacon': 'Flacon', 'ramette': 'Ramette'
+    };
+    return map[u.toLowerCase()] || String(u).charAt(0).toUpperCase() + String(u).slice(1);
   }
 };

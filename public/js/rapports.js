@@ -7,13 +7,13 @@ var Rapports = {
     var lastMonthStr = lastMonth.toISOString().split('T')[0];
 
     container.innerHTML =
-      '<div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-bottom:1.5rem">' +
+      '<div class="report-grid">' +
       // Carte 1: Etat du stock
       '<div class="card">' +
       '<h4 style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' +
       'État du stock</h4>' +
-      '<p class="text-sm text-muted" style="margin-bottom:1rem">Export complet de tous les articles avec leur stock actuel, statut et fournisseur.</p>' +
+      '<p class="text-sm text-muted" style="margin-bottom:1rem">Export complet de tous les articles avec leur stock actuel, prix unitaire, valeur du stock, statut et fournisseur.</p>' +
       '<button class="btn btn-primary btn-full" id="btn-export-stock">Télécharger Excel</button>' +
       '</div>' +
       // Carte 2: Historique mouvements
@@ -43,7 +43,7 @@ var Rapports = {
       '<h4 style="margin-bottom:0.75rem;display:flex;align-items:center;gap:0.5rem">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--color-accent)" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>' +
       'Sorties par agence</h4>' +
-      '<p class="text-sm text-muted" style="margin-bottom:1rem">Regroupement des sorties par localité sur la période : nombre, quantité et valeur estimée.</p>' +
+      '<p class="text-sm text-muted" style="margin-bottom:1rem">Détail des sorties par localité sur la période : articles, quantités et valeur estimée par agence.</p>' +
       '<div class="form-row mb-md">' +
       '<div class="form-group"><label class="form-label text-sm">Du</label><input type="date" class="form-input" id="agence-debut" value="' + lastMonthStr + '"></div>' +
       '<div class="form-group"><label class="form-label text-sm">Au</label><input type="date" class="form-input" id="agence-fin" value="' + today + '"></div>' +

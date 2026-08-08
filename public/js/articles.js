@@ -87,7 +87,7 @@ var Articles = {
         '<td><span style="font-family:var(--font-heading);font-size:0.8125rem">' + UI.escapeHtml(a.reference) + '</span></td>' +
         '<td><strong>' + UI.escapeHtml(a.nom) + '</strong></td>' +
         '<td>' + UI.escapeHtml(a.categorie_nom || '-') + '</td>' +
-        '<td>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(a.unite) + '</td>' +
+        '<td>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(UI.uniteLabel(a.unite)) + '</td>' +
         '<td>' + a.stock_min + '</td>' +
         '<td>' + UI.formatPrice(a.prix_unitaire) + '</td>' +
         '<td>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</td>' +
@@ -139,7 +139,7 @@ var Articles = {
           '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="art-nom" required></div>' +
           '<div class="form-row">' +
           '<div class="form-group"><label class="form-label">Categorie</label><select class="form-select" id="art-cat">' + catOptions + '</select></div>' +
-          '<div class="form-group"><label class="form-label">Unite</label><select class="form-select" id="art-unite"><option>piece</option><option>carton</option><option>ramette</option><option>lot</option><option>boite</option><option>flacon</option><option>rouleau</option><option>paquet</option></select></div>' +
+          '<div class="form-group"><label class="form-label">Unite</label><select class="form-select" id="art-unite"><option value="unite">Unité</option><option value="carton">Carton</option><option value="lot">Lot</option><option value="rouleau">Rouleau</option><option value="paquet">Paquet</option></select></div>' +
           '</div>' +
           '<div class="form-row">' +
           '<div class="form-group"><label class="form-label">Stock minimum</label><input type="number" class="form-input" id="art-min" value="10" min="0"></div>' +
@@ -210,7 +210,7 @@ var Articles = {
 
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>' + UI.escapeHtml(a.nom) + '</strong> <span class="text-sm text-muted">' + UI.escapeHtml(a.reference) + '</span></div>' +
-        '<div>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(a.unite) + '</div></div>' +
+        '<div>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(UI.uniteLabel(a.unite)) + '</div></div>' +
         '<div class="summary-box" style="margin-bottom:1rem">' +
         '<div class="summary-item">Categorie: <strong>' + UI.escapeHtml(a.categorie_nom || '-') + '</strong></div>' +
         '<div class="summary-item">Fournisseur: <strong>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</strong></div>' +
@@ -221,15 +221,13 @@ var Articles = {
       // Historique des mouvements
       html += '<h4 style="margin-bottom:0.5rem">Mouvements (' + mouvements.length + ')</h4>';
       if (mouvements.length) {
-        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Type</th><th>Qte</th><th>Motif</th><th>Par</th></tr></thead><tbody>';
+        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Type</th><th>Qte</th><th>Par</th></tr></thead><tbody>';
         for (var i = 0; i < mouvements.length; i++) {
           var m = mouvements[i];
-          var det = m.motif || '-';
           html += '<tr>' +
             '<td>' + UI.formatDate(m.date) + '</td>' +
             '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entree' : 'Sortie') + '</span></td>' +
             '<td><strong>' + m.quantite + '</strong></td>' +
-            '<td>' + UI.escapeHtml(det) + '</td>' +
             '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
             '</tr>';
         }

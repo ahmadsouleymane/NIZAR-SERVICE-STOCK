@@ -212,7 +212,7 @@ var Entrees = {
         search: function(term, cb) {
           API.getArticles({ search: term }).then(function(data) {
             cb(data.articles.map(function(a) {
-              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + a.unite, type: a.type_article };
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article };
             }));
           }).catch(function() { cb([]); });
         },

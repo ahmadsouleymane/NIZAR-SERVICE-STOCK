@@ -752,6 +752,21 @@ ul, ol { list-style: none; }
 .kpi-card-value.warning { color: var(--color-warning); }
 .kpi-card-value.success { color: var(--color-success); }
 
+/* Grille des cartes de rapports — auto-fill pour eviter le chevauchement sur desktop */
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 0.875rem;
+  margin-bottom: 1.5rem;
+  align-items: stretch;
+}
+.report-grid .card {
+  margin-bottom: 0;
+  display: flex;
+  flex-direction: column;
+}
+.report-grid .card .btn-full { margin-top: auto; }
+
 /* ------------------------------------------------------------
    11. CARTES (conteneurs)
    ------------------------------------------------------------ */

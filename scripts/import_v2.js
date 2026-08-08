@@ -160,7 +160,7 @@ db.transaction(() => {
   const usedRefs = new Set();
   const insertArticle = db.prepare(`
     INSERT INTO articles (reference, nom, categorie_id, type_article, unite, stock_min, stock_actuel)
-    VALUES (?, ?, ?, ?, 'piece', 5, 0)
+    VALUES (?, ?, ?, ?, 'unite', 5, 0)
   `);
   const articleIds = new Map(); // normName -> id
   for (const [n, info] of articleNames) {
