@@ -77,11 +77,15 @@ router.post('/', authenticate, async (req, res) => {
   const db = req.db;
   const { localite_id, articles, notes, date_envoi } = req.body;
 
-  // Date d'envoi : celle fournie par l'utilisateur (ex: date reelle de l'envoi,
-  // pour les sorties historiques), sinon la date du jour.
+  // Date d'envoi : si l'utilisateur fournit une date (sorties historiques),
+  // on la conserve ; sinon date/heure reelle du moment (jour, mois, annee, heure).
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const nowStr = now.getFullYear() + '-' + pad(now.getMonth() + 1) + '-' + pad(now.getDate()) +
+    ' ' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
   const dateEffective = (date_envoi && !isNaN(new Date(date_envoi).getTime()))
     ? date_envoi + ' 00:00:00'
-    : new Date().toISOString().split('T')[0] + ' 00:00:00';
+    : nowStr;
 
   if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
   if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
