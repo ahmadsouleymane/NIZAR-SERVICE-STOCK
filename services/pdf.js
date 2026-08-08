@@ -53,8 +53,7 @@ function generateFichePDF(fiche, lignes) {
         // Position du haut de ligne (top-down du modele) -> baseline pdf-lib
         const base = (topY, size) => height - topY - size * 0.72;
 
-        const destFull = fiche.localite_nom +
-          (fiche.localite_service ? ' — Siege' : (fiche.localite_type === 'international' ? ' — ' + (fiche.localite_pays || 'International') : ' — National'));
+        const destFull = fiche.localite_nom || '';
 
         // === N° (référence de la fiche) : remplace « 000 » du modele ===
         // On couvre l'ancien « 000 » par un fond blanc puis on ecrit la reference
@@ -72,19 +71,21 @@ function generateFichePDF(fiche, lignes) {
         });
 
         // === TABLEAU : UNE ligne par article (aucune ligne vide) ===
-        const firstRowTop = 255;   // premiere ligne sous l'en-tete (en-tete a y≈232)
-        const available = 525 - firstRowTop;
-        const spacing = lignes.length ? Math.min(22, Math.max(12, Math.floor(available / lignes.length))) : 22;
-        const maxRows = Math.floor(available / 12);
-        let truncated = false;
+        // Positions des 12 lignes de la grille du modele (sous l'en-tete)
+        const ROW_SEPS = [266.7, 287.6, 308.8, 330.1, 351.3, 372.5, 393.8, 415.0, 435.9, 457.1, 478.4, 499.6];
+        const TABLE_LEFT = 70.8;
+        const TABLE_W = 460.1;
+        const PITCH = 21;
+        const firstRowTop = 255;   // centre de la premiere ligne du tableau
+        const filled = Math.min(lignes.length, ROW_SEPS.length);
+        const whiteColor = rgb(1, 1, 1);
 
-        for (let i = 0; i < lignes.length; i++) {
-          if (i >= maxRows) { truncated = true; break; }
+        for (let i = 0; i < filled; i++) {
           const l = lignes[i];
-          const y = base(firstRowTop + i * spacing, 9.5);
+          const y = base(firstRowTop + i * PITCH, 9.5);
 
           page.drawText(String(l.article_nom || ''), {
-            x: 75, y, size: 9.5, font, color, maxWidth: 215
+            x: TABLE_LEFT + 4, y, size: 9.5, font, color, maxWidth: 215
           });
           // Plage de numeros : « debut - fin » (carnet), sinon un tiret
           const plage = (l.numero_debut && l.numero_fin) ? (String(l.numero_debut) + ' - ' + String(l.numero_fin)) : '-';
@@ -101,9 +102,17 @@ function generateFichePDF(fiche, lignes) {
           });
         }
 
-        if (truncated) {
-          page.drawText('… ' + (lignes.length - maxRows) + ' article(s) supplementaires (liste complete dans le systeme)', {
-            x: 75, y: base(firstRowTop + maxRows * spacing, 8), size: 8, font, color: grey
+        // === Masquer les lignes vides restantes (separateurs gris sous la derniere ligne) ===
+        if (filled < ROW_SEPS.length) {
+          for (let i = filled; i < ROW_SEPS.length; i++) {
+            const lineY = ROW_SEPS[i]; // position top-down de la ligne a masquer
+            page.drawRectangle({ x: TABLE_LEFT, y: height - (lineY + 3), width: TABLE_W, height: 6, color: whiteColor });
+          }
+        }
+
+        if (lignes.length > ROW_SEPS.length) {
+          page.drawText('… ' + (lignes.length - ROW_SEPS.length) + ' article(s) supplementaires (liste complete dans le systeme)', {
+            x: TABLE_LEFT + 4, y: base(505, 8), size: 8, font, color: grey
           });
         }
 
