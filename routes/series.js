@@ -3,6 +3,44 @@ const express = require('express');
 const { authenticate } = require('../middleware/auth');
 const router = express.Router();
 
+// GET /api/series — liste filtrable de toutes les series (article, localite, statut, periode)
+router.get('/', authenticate, (req, res) => {
+  const db = req.db;
+  const { article_id, localite_id, source_type, debut, fin, search, offset } = req.query;
+
+  let where = 'WHERE 1=1';
+  const params = [];
+
+  if (article_id) { where += ' AND s.article_id = ?'; params.push(article_id); }
+  if (source_type) { where += ' AND s.source_type = ?'; params.push(source_type); }
+  if (debut) { where += ' AND s.date >= ?'; params.push(debut); }
+  if (fin) { where += ' AND s.date <= ?'; params.push(fin + ' 23:59:59'); }
+  if (localite_id) {
+    where += ' AND fr.localite_id = ?'; params.push(localite_id);
+  }
+  if (search) {
+    where += ' AND (CAST(s.numero_debut AS INTEGER) <= ? AND CAST(s.numero_fin AS INTEGER) >= ?)';
+    params.push(parseInt(search, 10), parseInt(search, 10));
+  }
+
+  const limit = 50;
+  const off = parseInt(offset, 10) || 0;
+
+  const series = db.prepare(`
+    SELECT s.*, a.nom as article_nom, a.reference, l.nom as localite_nom,
+           fr.reference as fiche_reference
+    FROM series_numeros s
+    LEFT JOIN articles a ON s.article_id = a.id
+    LEFT JOIN fiches_reception fr ON s.source_type = 'sortie' AND fr.id = s.source_id
+    LEFT JOIN localites l ON fr.localite_id = l.id
+    ${where}
+    ORDER BY s.date DESC, s.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, off);
+
+  res.json({ series });
+});
+
 // GET /api/series/recherche?numero=XXXX — retrouve la position precise d'un numero de souche
 // dans toutes les series (entree / sortie / retour) et reconstruit sa trace complete.
 // Gere deux regimes : carnets point de vente (reset a 001 par localite) et billets

@@ -1,27 +1,124 @@
-// public/js/souches.js — Recherche precise de numero de souche (billets / carnets)
+// public/js/souches.js — Recherche et filtrage des numeros de souche (billets / carnets)
 var Souches = {
+  _articles: [],
+  _localites: [],
+
   render: function(container) {
     container.innerHTML =
       '<div class="card">' +
       '<div class="card-header"><h3 class="card-title">Recherche de numero de souche</h3></div>' +
-      '<p class="text-sm text-muted mb-md">Entrez un numero de billet / carnet pour savoir exactement ou il se trouve : son article, sa position dans le carnet, la localite ou l\'agence qui l\'a recu, et tout son historique.</p>' +
-      '<div class="flex-between gap-sm">' +
-      '<input type="number" class="form-input" id="souche-numero" placeholder="Ex: 160003" style="min-width:160px" inputmode="numeric">' +
+      '<p class="text-sm text-muted mb-md">Recherchez un numero precis ou filtrez par article, localite, statut ou periode pour retrouver un billet / carnet.</p>' +
+
+      // Barre de recherche rapide par numero
+      '<div class="flex-between gap-sm mb-md">' +
+      '<input type="number" class="form-input" id="souche-numero" placeholder="Recherche exacte : entrer un numero..." style="min-width:200px" inputmode="numeric">' +
       '<button class="btn btn-primary" id="btn-souche-search">Rechercher</button>' +
       '</div>' +
+
+      // Filtres
+      '<div class="filter-bar mb-md">' +
+      '<select class="form-select" id="filtre-souche-article"><option value="">Tous les articles</option></select>' +
+      '<select class="form-select" id="filtre-souche-localite"><option value="">Toutes localites</option></select>' +
+      '<select class="form-select" id="filtre-souche-type"><option value="">Tous types</option><option value="entree">Entrees</option><option value="sortie">Sorties</option><option value="retour">Retours</option></select>' +
+      '<input type="date" class="form-input" id="filtre-souche-debut" placeholder="Du..." style="min-width:130px">' +
+      '<input type="date" class="form-input" id="filtre-souche-fin" placeholder="Au..." style="min-width:130px">' +
+      '<button class="btn btn-secondary btn-sm" id="btn-souche-filter">Filtrer</button>' +
+      '</div>' +
+
       '<div id="souche-result" class="mt-md"></div>' +
       '</div>';
 
+    this._loadFilters();
     this._bindEvents();
   },
 
   _bindEvents: function() {
     var self = this;
-    var doSearch = function() { self._search(); };
-    document.getElementById('btn-souche-search').addEventListener('click', doSearch);
+    document.getElementById('btn-souche-search').addEventListener('click', function() { self._search(); });
     document.getElementById('souche-numero').addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') doSearch();
+      if (e.key === 'Enter') self._search();
     });
+    document.getElementById('btn-souche-filter').addEventListener('click', function() { self._filterList(); });
+  },
+
+  _loadFilters: function() {
+    var self = this;
+    API.getArticles().then(function(d) {
+      self._articles = d.articles;
+      var sel = document.getElementById('filtre-souche-article');
+      for (var i = 0; i < d.articles.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = d.articles[i].id;
+        opt.textContent = d.articles[i].nom;
+        sel.appendChild(opt);
+      }
+    }).catch(function() {});
+    API.getLocalites().then(function(d) {
+      self._localites = d.localites;
+      var sel = document.getElementById('filtre-souche-localite');
+      for (var j = 0; j < d.localites.length; j++) {
+        var opt = document.createElement('option');
+        opt.value = d.localites[j].id;
+        opt.textContent = d.localites[j].nom;
+        sel.appendChild(opt);
+      }
+    }).catch(function() {});
+  },
+
+  _filterList: function() {
+    var params = {};
+    var art = document.getElementById('filtre-souche-article').value;
+    var loc = document.getElementById('filtre-souche-localite').value;
+    var type = document.getElementById('filtre-souche-type').value;
+    var debut = document.getElementById('filtre-souche-debut').value;
+    var fin = document.getElementById('filtre-souche-fin').value;
+    if (art) params.article_id = art;
+    if (loc) params.localite_id = loc;
+    if (type) params.source_type = type;
+    if (debut) params.debut = debut;
+    if (fin) params.fin = fin;
+
+    var result = document.getElementById('souche-result');
+    result.innerHTML = UI.renderSkeleton(4);
+
+    var self = this;
+    API.getSeries(params)
+      .then(function(data) {
+        if (!data.series.length) {
+          result.innerHTML = '<div class="empty-state"><h3>Aucune serie</h3><p>Aucune plage de numero ne correspond a ces filtres.</p></div>';
+          return;
+        }
+        self._renderTable(data.series);
+      })
+      .catch(function(err) {
+        result.innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
+      });
+  },
+
+  _renderTable: function(series) {
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Date</th><th>Article</th><th>Type</th><th>Plage</th><th>Qte</th><th>Localite</th><th>Fiche</th>' +
+      '</tr></thead><tbody>';
+
+    for (var i = 0; i < series.length; i++) {
+      var s = series[i];
+      var typeBadge = s.source_type === 'entree'
+        ? '<span class="badge badge-success">Entree</span>'
+        : (s.source_type === 'sortie'
+          ? '<span class="badge badge-warning">Sortie</span>'
+          : '<span class="badge badge-info">Retour</span>');
+      html += '<tr>' +
+        '<td>' + UI.formatDate(s.date) + '</td>' +
+        '<td><strong>' + UI.escapeHtml(s.article_nom || '-') + '</strong></td>' +
+        '<td>' + typeBadge + '</td>' +
+        '<td style="font-family:var(--font-heading);font-size:0.8rem">' + (s.numero_debut ? UI.escapeHtml(s.numero_debut) + ' — ' + UI.escapeHtml(s.numero_fin) : '-') + '</td>' +
+        '<td>' + s.quantite + '</td>' +
+        '<td>' + UI.escapeHtml(s.localite_nom || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(s.fiche_reference || '-') + '</td>' +
+        '</tr>';
+    }
+    html += '</tbody></table></div>';
+    document.getElementById('souche-result').innerHTML = html;
   },
 
   _search: function() {

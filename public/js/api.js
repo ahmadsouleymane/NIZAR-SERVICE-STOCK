@@ -421,6 +421,11 @@ const API = {
     return '/api/entrees/' + id + '/pdf';
   },
 
+  async getSeries(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/series' + (qs ? '?' + qs : ''));
+  },
+
   async getSeriesArticle(article_id) {
     return this.fetch('/api/series/' + article_id);
   },
