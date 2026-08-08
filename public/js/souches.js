@@ -97,7 +97,7 @@ var Souches = {
 
   _renderTable: function(series) {
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Date</th><th>Article</th><th>Type</th><th>Plage</th><th>Qte</th><th>Localite</th><th>Fiche</th>' +
+      '<th></th><th>Date</th><th>Article</th><th>Type</th><th>Plage</th><th>Qte</th><th>Localite</th><th>Fiche</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < series.length; i++) {
@@ -107,7 +107,8 @@ var Souches = {
         : (s.source_type === 'sortie'
           ? '<span class="badge badge-warning">Sortie</span>'
           : '<span class="badge badge-info">Retour</span>');
-      html += '<tr>' +
+      html += '<tr class="serie-row" data-idx="' + i + '" style="cursor:pointer">' +
+        '<td><span class="expand-icon">▶</span></td>' +
         '<td>' + UI.formatDate(s.date) + '</td>' +
         '<td><strong>' + UI.escapeHtml(s.article_nom || '-') + '</strong></td>' +
         '<td>' + typeBadge + '</td>' +
@@ -115,10 +116,33 @@ var Souches = {
         '<td>' + s.quantite + '</td>' +
         '<td>' + UI.escapeHtml(s.localite_nom || '-') + '</td>' +
         '<td>' + UI.escapeHtml(s.fiche_reference || '-') + '</td>' +
-        '</tr>';
+        '</tr><tr class="serie-detail" id="serie-detail-' + i + '" style="display:none"><td colspan="8">' +
+        '<div style="background:var(--color-muted);padding:12px;border-radius:8px;font-size:0.875rem">' +
+        '<strong>Plage complète :</strong> <span style="font-family:var(--font-heading)">' + UI.escapeHtml(s.numero_debut || '') + ' — ' + UI.escapeHtml(s.numero_fin || '') + '</span><br>' +
+        '<strong>Type :</strong> ' + UI.escapeHtml(s.source_type) + '<br>' +
+        (s.localite_nom ? '<strong>Localité :</strong> ' + UI.escapeHtml(s.localite_nom) + '<br>' : '') +
+        (s.fiche_reference ? '<strong>Fiche liée :</strong> <a href="#fiches" style="color:var(--color-primary)">' + UI.escapeHtml(s.fiche_reference) + '</a><br>' : '') +
+        '<strong>Réf. article :</strong> ' + UI.escapeHtml(s.reference || '-') +
+        '</div></td></tr>';
     }
     html += '</tbody></table></div>';
     document.getElementById('souche-result').innerHTML = html;
+
+    // Click to expand/collapse
+    document.getElementById('souche-result').querySelectorAll('.serie-row').forEach(function(row) {
+      row.addEventListener('click', function() {
+        var idx = this.dataset.idx;
+        var detail = document.getElementById('serie-detail-' + idx);
+        var icon = this.querySelector('.expand-icon');
+        if (detail.style.display === 'none') {
+          detail.style.display = '';
+          icon.textContent = '▼';
+        } else {
+          detail.style.display = 'none';
+          icon.textContent = '▶';
+        }
+      });
+    });
   },
 
   _search: function() {

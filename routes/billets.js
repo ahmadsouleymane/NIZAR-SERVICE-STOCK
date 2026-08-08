@@ -21,7 +21,20 @@ router.get('/', authenticate, (req, res) => {
     ORDER BY a.nom ASC
   `).all();
 
-  res.json({ billets });
+  // Vue par localité : pour chaque article numerote, repartition par agence/localite
+  const parLocalite = db.prepare(`
+    SELECT a.nom as article_nom, a.reference, l.nom as localite_nom,
+           SUM(s.quantite) as total_envoye
+    FROM series_numeros s
+    JOIN articles a ON s.article_id = a.id
+    JOIN fiches_reception fr ON s.source_type = 'sortie' AND fr.id = s.source_id
+    JOIN localites l ON fr.localite_id = l.id
+    WHERE a.type_article = 'numerote'
+    GROUP BY a.id, l.id
+    ORDER BY a.nom ASC, total_envoye DESC
+  `).all();
+
+  res.json({ billets, parLocalite });
 });
 
 module.exports = router;
