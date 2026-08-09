@@ -470,6 +470,19 @@ const API = {
     return this.fetch('/api/series/recherche?numero=' + encodeURIComponent(numero));
   },
 
+  // Comptage physique
+  async getInventaires(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/inventaires' + (qs ? '?' + qs : ''));
+  },
+
+  async createInventaire(data) {
+    return this.fetch('/api/inventaires', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
   // Inventaire (grand livre)
   async getJournal(params = {}) {
     const qs = new URLSearchParams(params).toString();

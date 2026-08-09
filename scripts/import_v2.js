@@ -126,19 +126,21 @@ for (const rows of [f1, f2, f3]) {
 const lastDate = excelDate(lastSerial) || new Date().toISOString().split('T')[0];
 
 // --- Articles (libellés uniques normalisés) ---
-// Les numeros de souche ne concernent QUE les billets et les carnets.
-function isBilletCarnet(name) {
-  const n = name.toLowerCase();
-  return /carnet|billet|voyageur|express|electronique|electro|point de vente|partenaire/.test(n);
-}
+// Les numeros de souche ne concernent QUE les billets, carnets et bons EFFECTIVEMENT
+// numerotes dans le fichier source : on se base sur la presence reelle d'une plage
+// de numeros valide (colonne Numeros) plutot que sur le nom de l'article, pour eviter
+// deux erreurs symetriques : un faux positif sur nom ("Protege billets" contient
+// "billet" mais n'a jamais de numero) et un faux negatif sur nom ("Bon de commande"
+// ne contient ni "billet" ni "carnet" mais porte bien des plages de numeros).
 const articleNames = new Map(); // normName -> {quantite:sum, numerote:bool}
 for (const rows of [f1]) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i];
     if (!r || !r[1]) continue;
     const n = norm(r[1]);
-    if (!articleNames.has(n)) articleNames.set(n, { quantite: 0, numerote: isBilletCarnet(n) });
+    if (!articleNames.has(n)) articleNames.set(n, { quantite: 0, numerote: false });
     articleNames.get(n).quantite += parseFloat(r[3]) || 1;
+    if (parseRange(r[4])) articleNames.get(n).numerote = true;
   }
 }
 // Les carnets de Feuil2/Feuil3 sont des billets/carnets numérotés
@@ -193,10 +195,20 @@ db.transaction(() => {
   }
 
   // --- 3. Créer les localités manquantes ---
+  // Alias connus (fautes de frappe / abreviations du fichier source, au-dela de la
+  // simple casse deja geree par norm()) : fusionnes vers le nom canonique deja en base.
+  const LOC_ALIASES = {
+    'Acrra': 'Accra',
+    'Comptabilité': 'Comptabilite',
+    'Rh': 'Ressources Humaines'
+  };
   const locIds = new Map(); // normName -> id
   const getLoc = (name) => {
-    const n = norm(name);
-    if (!n) return null;
+    let n = norm(name);
+    n = LOC_ALIASES[n] || n;
+    // Localite vide dans le fichier source : rattachee a « Destination inconnue »
+    // plutot que NULL, pour rester compatible avec fiches_reception.localite_id (NOT NULL).
+    if (!n) n = 'Destination inconnue';
     if (locIds.has(n)) return locIds.get(n);
     let row = db.prepare('SELECT id FROM localites WHERE nom = ?').get(n);
     if (!row) {
