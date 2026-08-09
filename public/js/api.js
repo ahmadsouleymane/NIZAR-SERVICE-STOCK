@@ -458,6 +458,18 @@ const API = {
   },
 
   // Import Excel
+  async importEntrees(file) {
+    var token = this.getToken();
+    var formData = new FormData();
+    formData.append('file', file);
+    var res = await fetch('/api/import/entrees', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token },
+      body: formData
+    });
+    return res.json();
+  },
+
   async importExcel(file) {
     var token = this.getToken();
     var formData = new FormData();

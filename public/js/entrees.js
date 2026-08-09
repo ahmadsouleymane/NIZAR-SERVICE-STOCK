@@ -17,6 +17,9 @@ var Entrees = {
       '<button class="btn btn-primary" id="btn-new-entree">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
       ' Nouvelle entrée</button>' +
+      '<button class="btn btn-secondary btn-sm" id="btn-import-entrees" style="background:var(--color-accent);color:#fff;border:none">' +
+      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
+      ' Importer Excel</button>' +
       '</div>' +
       '<div class="filter-bar">' +
       '<select class="form-select" id="entree-statut"><option value="">Tous statuts</option><option value="validee">Validée</option><option value="archivee">Archivée</option></select>' +
@@ -36,6 +39,7 @@ var Entrees = {
     document.getElementById('btn-new-entree').addEventListener('click', function() { self._showForm(); });
     document.getElementById('entree-statut').addEventListener('change', function() { self._load(true); });
     document.getElementById('btn-entrees-refresh').addEventListener('click', function() { self._load(true); });
+    document.getElementById('btn-import-entrees').addEventListener('click', function() { self._importExcel(); });
   },
 
   _load: function(reset) {
@@ -516,6 +520,27 @@ var Entrees = {
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } }
       ]);
     });
+  },
+
+  _importExcel: function() {
+    var self = this;
+    UI.pickFile(function(file) {
+      if (!file) return;
+      if (!file.name.match(/\.xlsx?$/i)) { UI.toast('Fichier Excel requis (.xlsx).', 'error'); return; }
+      UI.toast('Import en cours...', 'info');
+      API.importEntrees(file)
+        .then(function(data) {
+          if (data.error) { UI.toast(data.error, 'error'); return; }
+          UI.toast(data.message || 'Import termine.', 'success');
+          if (data.imported && data.imported.erreurs && data.imported.erreurs.length) {
+            setTimeout(function() {
+              UI.toast(data.imported.erreurs.length + ' erreur(s) — voir la console.', 'warning');
+            }, 2000);
+          }
+          self._load(true);
+        })
+        .catch(function(err) { UI.toast(err.message, 'error'); });
+    }, '.xlsx');
   },
 
   _deleteEntree: function(id) {

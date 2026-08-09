@@ -111,4 +111,69 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
   res.json({ imported, message: 'Import termine : ' + imported.articles + ' articles, ' + imported.mouvements + ' mouvements (sorties).' });
 });
 
+// POST /api/import/entrees — importer des entrees fournisseur depuis Excel
+// Format : Article | Quantite | N° debut | N° fin | Observation
+router.post('/entrees', authenticate, upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'Fichier Excel requis.' });
+  const db = req.db;
+  const { fournisseur_id, numero_bl, numero_facture, numero_fiche_besoin } = req.body;
+  let imported = { articles: 0, erreurs: [] };
+
+  try {
+    const workbook = XLSX.readFile(req.file.path);
+    const sheetName = workbook.SheetNames[0];
+    if (!sheetName) { try { fs.unlinkSync(req.file.path); } catch (e) {} return res.status(400).json({ error: 'Fichier Excel vide.' }); }
+    const data = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1 });
+
+    const now = new Date();
+    const y = now.getFullYear().toString().slice(-2);
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    const seq = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'fiches_entree'").get();
+    const reference = 'FE-' + y + m + '-' + String((seq ? seq.seq : 0) + 1).padStart(3, '0');
+    let ficheId = null;
+
+    const { checkOverlap, recordSerie } = require('../services/series');
+
+    const transaction = db.transaction(() => {
+      const result = db.prepare(`
+        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, numero_fiche_besoin, user_id, statut, validee, articles_json)
+        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee', 1, '[]')
+      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, req.user.id);
+      ficheId = result.lastInsertRowid;
+
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        if (!row || !row[0]) continue;
+        try {
+          const articleNom = String(row[0]).trim();
+          const quantite = parseInt(row[1], 10) || 1;
+          const nd = row[2] ? String(row[2]).trim() : null;
+          const nf = row[3] ? String(row[3]).trim() : null;
+          const obs = row[4] ? String(row[4]).trim() : null;
+
+          let article = db.prepare('SELECT * FROM articles WHERE nom = ? OR reference = ?').get(articleNom, articleNom);
+          if (!article) { imported.erreurs.push('Ligne ' + (i + 1) + ' : article "' + articleNom + '" introuvable.'); continue; }
+
+          if (article.type_article === 'numerote') {
+            if (!nd || !nf) { imported.erreurs.push('Ligne ' + (i + 1) + ' : N° debut/fin requis pour article numerote.'); continue; }
+            if (checkOverlap(db, article.id, nd, nf, 'entree')) { imported.erreurs.push('Ligne ' + (i + 1) + ' : chevauchement plage.'); continue; }
+            recordSerie(db, article.id, nd, nf, quantite, 'entree', ficheId);
+          }
+
+          db.prepare('INSERT INTO fiche_entree_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation) VALUES (?,?,?,?,?,?)').run(ficheId, article.id, quantite, nd, nf, obs || null);
+          db.prepare("INSERT INTO mouvements (article_id, type, quantite, motif, user_id, fournisseur_id, entree_id, numero_debut, numero_fin, date) VALUES (?,'entree',?,'Entree fournisseur — ' || ?,?,?,?,?,?, datetime('now','localtime'))").run(article.id, quantite, reference, req.user.id, fournisseur_id || null, ficheId, nd, nf);
+          db.prepare("UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?").run(quantite, article.id);
+          imported.articles++;
+        } catch (err) { imported.erreurs.push('Ligne ' + (i + 1) + ' : ' + err.message); }
+      }
+    });
+    transaction();
+  } catch (err) {
+    if (req.file && req.file.path) try { fs.unlinkSync(req.file.path); } catch (e) {}
+    return res.status(400).json({ error: 'Erreur de lecture : ' + err.message });
+  }
+  try { fs.unlinkSync(req.file.path); } catch (e) {}
+  res.json({ imported, reference, message: 'Import termine : ' + imported.articles + ' entrees, ' + imported.erreurs.length + ' erreurs.' });
+});
+
 module.exports = router;
