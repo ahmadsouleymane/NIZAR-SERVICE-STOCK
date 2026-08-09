@@ -409,7 +409,7 @@ var Entrees = {
       }
 
       if (f.fichier_path && f.fichier_path.endsWith('.pdf')) {
-        html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Télécharger le bon de livraison (PDF)</a></div>';
+        html += '<div class="mt-md"><button type="button" class="btn btn-accent btn-sm" id="btn-dl-bl">Télécharger le bon de livraison (PDF)</button></div>';
       }
 
       html += '<div class="mt-md"><div class="flex-between"><strong>Photos archivees</strong><button class="btn btn-sm btn-secondary" id="btn-add-photo-detail">+ Photo</button></div>' +
@@ -437,7 +437,31 @@ var Entrees = {
 
       var addBtn = document.getElementById('btn-add-photo-detail');
       if (addBtn) addBtn.addEventListener('click', function() { self._addPhoto(f.id); });
+      var dlBtn = document.getElementById('btn-dl-bl');
+      if (dlBtn) dlBtn.addEventListener('click', function() { self._downloadBonLivraison(id); });
     }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  // Toujours via l'API (jamais un lien statique) : le bon de livraison est
+  // regenere a partir des donnees actuelles a chaque telechargement.
+  _downloadBonLivraison: function(id) {
+    var token = API.getToken();
+    fetch(API.getEntreePdfUrl(id), { headers: { 'Authorization': 'Bearer ' + token } })
+      .then(function(res) {
+        if (!res.ok) throw new Error('Erreur');
+        return res.blob();
+      })
+      .then(function(blob) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'bon-livraison-' + id + '.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(function() { UI.toast('Erreur lors du téléchargement du PDF.', 'error'); });
   },
 
   // Cree le brouillon d'entree a partir du formulaire courant (partage par _pickPhoto et

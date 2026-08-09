@@ -47,6 +47,7 @@
 
   // Construire les navigations
   function buildNav() {
+    UI.loadUnitesCache();
     var drawerNav = document.getElementById('drawer-nav');
     var bottomNav = document.getElementById('bottom-nav');
 

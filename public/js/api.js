@@ -165,6 +165,13 @@ const API = {
     });
   },
 
+  async updateCategory(id, data) {
+    return this.fetch('/api/categories/' + id, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
   async deleteCategory(id) {
     return this.fetch('/api/categories/' + id, {
       method: 'DELETE'
@@ -179,6 +186,13 @@ const API = {
   async createUnite(data) {
     return this.fetch('/api/unites', {
       method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async updateUnite(id, data) {
+    return this.fetch('/api/unites/' + id, {
+      method: 'PUT',
       body: JSON.stringify(data)
     });
   },

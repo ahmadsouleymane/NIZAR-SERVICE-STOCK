@@ -26,7 +26,8 @@ function generateRef(db) {
 function buildLignesForPDF(db, fiche) {
   if (fiche.validee) {
     return db.prepare(`
-      SELECT fea.quantite, fea.numero_debut, fea.numero_fin, a.nom as article_nom, a.unite
+      SELECT fea.quantite, fea.numero_debut, fea.numero_fin, a.nom as article_nom,
+        COALESCE((SELECT label FROM unites WHERE code = a.unite), a.unite) as unite
       FROM fiche_entree_articles fea LEFT JOIN articles a ON fea.article_id = a.id
       WHERE fea.fiche_id = ?
     `).all(fiche.id);
@@ -34,13 +35,16 @@ function buildLignesForPDF(db, fiche) {
   let articles;
   try { articles = JSON.parse(fiche.articles_json || '[]'); } catch (e) { articles = []; }
   return articles.map(function(art) {
-    const a = db.prepare('SELECT nom, unite FROM articles WHERE id = ?').get(art.article_id);
+    const a = db.prepare(`
+      SELECT art2.nom as nom, COALESCE((SELECT label FROM unites WHERE code = art2.unite), art2.unite) as unite_label
+      FROM articles art2 WHERE art2.id = ?
+    `).get(art.article_id);
     return {
       quantite: art.quantite,
       numero_debut: art.numero_debut || null,
       numero_fin: art.numero_fin || null,
       article_nom: a ? a.nom : ('Article #' + art.article_id),
-      unite: a ? a.unite : ''
+      unite: a ? a.unite_label : ''
     };
   });
 }
@@ -119,17 +123,34 @@ router.post('/:id/bon-livraison', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/entrees/:id/pdf — telecharger/re-imprimer le bon de livraison genere
-router.get('/:id/pdf', authenticate, (req, res) => {
+// GET /api/entrees/:id/pdf — telecharger/re-imprimer le bon de livraison. Toujours
+// regenere a partir des donnees actuelles (fournisseur, unite...), jamais de version figee.
+router.get('/:id/pdf', authenticate, async (req, res) => {
   const db = req.db;
-  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
+  const fiche = db.prepare(`
+    SELECT fe.*, f.nom as fournisseur_nom FROM fiches_entree fe
+    LEFT JOIN fournisseurs f ON fe.fournisseur_id = f.id WHERE fe.id = ?
+  `).get(req.params.id);
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
   if (!fiche.fichier_path) return res.status(404).json({ error: "Aucun bon de livraison genere pour cette entree." });
 
+  const lignes = buildLignesForPDF(db, fiche);
   const uploadsDir = require('../services/paths').uploadDir;
-  const fullPath = path.resolve(uploadsDir, String(fiche.fichier_path).replace(/^\/uploads\//, ''));
-  if (!fs.existsSync(fullPath)) return res.status(404).json({ error: 'Fichier introuvable sur le serveur.' });
-  res.download(fullPath);
+  const ancienFichier = fiche.fichier_path;
+
+  try {
+    const { generateBonLivraisonPDF } = require('../services/pdf');
+    const pdfPath = await generateBonLivraisonPDF(fiche, lignes);
+    db.prepare('UPDATE fiches_entree SET fichier_path = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?').run(pdfPath, req.params.id);
+    if (ancienFichier && ancienFichier !== pdfPath) {
+      const ancienFull = path.resolve(uploadsDir, String(ancienFichier).replace(/^\/uploads\//, ''));
+      if (fs.existsSync(ancienFull)) { try { fs.unlinkSync(ancienFull); } catch (e) { /* deja supprime */ } }
+    }
+    const fullPath = path.resolve(uploadsDir, String(pdfPath).replace(/^\/uploads\//, ''));
+    res.download(fullPath);
+  } catch (err) {
+    res.status(500).json({ error: 'Erreur generation PDF: ' + err.message });
+  }
 });
 
 // POST /api/entrees — creer un brouillon d'entree (stock NON incremente avant validation)

@@ -534,14 +534,32 @@ var UI = {
     return Number(n).toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) + ' F';
   },
 
-  // Libellé d'unité normalisé : « piece » -> « Unité », etc.
+  // Cache des unites gerees par l'admin (Parametres), charge au demarrage de
+  // l'app et rafraichi apres toute modification. Source de verite pour le
+  // libelle affiche : evite qu'un renommage/ajout d'unite reste sans effet.
+  _unitesMap: null,
+  loadUnitesCache: function() {
+    var self = this;
+    if (typeof API === 'undefined') return Promise.resolve();
+    return API.getUnites().then(function(data) {
+      var map = {};
+      (data.unites || []).forEach(function(u) { map[String(u.code).toLowerCase()] = u.label; });
+      self._unitesMap = map;
+    }).catch(function() {});
+  },
+
+  // Libellé d'unité : d'abord la table `unites` geree par l'admin, sinon un
+  // filet de securite pour d'anciennes valeurs libres deja enregistrees
+  // (ex. « Lot de 500 » saisi avant que ce libelle soit gere en base).
   uniteLabel: function(u) {
     if (!u) return '';
-    var map = {
+    var key = String(u).toLowerCase();
+    if (this._unitesMap && this._unitesMap[key]) return this._unitesMap[key];
+    var legacyMap = {
       'unite': 'Unité', 'piece': 'Unité', 'carton': 'Carton', 'lot': 'Lot',
       'rouleau': 'Rouleau', 'paquet': 'Paquet', 'boite': 'Boîte',
       'flacon': 'Flacon', 'ramette': 'Ramette'
     };
-    return map[u.toLowerCase()] || String(u).charAt(0).toUpperCase() + String(u).slice(1);
+    return legacyMap[key] || String(u).charAt(0).toUpperCase() + String(u).slice(1);
   }
 };

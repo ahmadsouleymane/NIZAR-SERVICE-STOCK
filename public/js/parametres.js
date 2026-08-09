@@ -8,13 +8,13 @@ var Parametres = {
 
     container.innerHTML =
       // Categories (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Categories</h3></div>' +
-      '<div class="flex-between mb-md gap-sm"><input type="text" class="form-input" id="new-cat-name" placeholder="Nouvelle categorie..." style="max-width:300px"><button class="btn btn-primary btn-sm" id="btn-add-cat">Ajouter</button></div>' +
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Categories</h3>' +
+      '<button class="btn btn-primary btn-sm" id="btn-add-cat">Ajouter une categorie</button></div>' +
       '<div id="categories-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Unites (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Unités</h3></div>' +
-      '<div class="flex-between mb-md gap-sm"><input type="text" class="form-input" id="new-unite-label" placeholder="Nouvelle unité (ex: Kg)..." style="max-width:300px"><button class="btn btn-primary btn-sm" id="btn-add-unite">Ajouter</button></div>' +
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Unités</h3>' +
+      '<button class="btn btn-primary btn-sm" id="btn-add-unite">Ajouter une unité</button></div>' +
       '<div id="unites-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Localites (admin only)
@@ -73,8 +73,8 @@ var Parametres = {
     var isAdmin = this._user.role === 'admin';
 
     if (isAdmin) {
-      document.getElementById('btn-add-cat').addEventListener('click', function() { self._addCategory(); });
-      document.getElementById('btn-add-unite').addEventListener('click', function() { self._addUnite(); });
+      document.getElementById('btn-add-cat').addEventListener('click', function() { self._showCategoryForm(); });
+      document.getElementById('btn-add-unite').addEventListener('click', function() { self._showUniteForm(); });
       document.getElementById('btn-add-loc').addEventListener('click', function() { self._showLocaliteForm(); });
       document.getElementById('btn-add-user').addEventListener('click', function() { self._showUserForm(); });
       document.getElementById('btn-import').addEventListener('click', function() { self._importExcel(); });
@@ -94,14 +94,42 @@ var Parametres = {
         for (var i = 0; i < data.categories.length; i++) {
           var c = data.categories[i];
           html += '<tr><td><strong>' + UI.escapeHtml(c.name) + '</strong></td><td>' + UI.escapeHtml(c.description || '-') + '</td>' +
-            '<td><button class="btn btn-sm btn-danger btn-del-cat" data-id="' + c.id + '">Supprimer</button></td></tr>';
+            '<td class="actions"><button class="btn btn-sm btn-secondary btn-edit-cat" data-id="' + c.id + '">Modifier</button>' +
+            '<button class="btn btn-sm btn-danger btn-del-cat" data-id="' + c.id + '">Supprimer</button></td></tr>';
         }
         html += '</tbody></table></div>';
         el.innerHTML = html;
+        el.querySelectorAll('.btn-edit-cat').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var c = data.categories.find(function(x) { return x.id === parseInt(btn.getAttribute('data-id'), 10); });
+            if (c) self._showCategoryForm(c);
+          });
+        });
         el.querySelectorAll('.btn-del-cat').forEach(function(btn) {
           btn.addEventListener('click', function() { self._deleteCategory(parseInt(this.getAttribute('data-id'))); });
         });
       }).catch(function() {});
+  },
+
+  _showCategoryForm: function(existing) {
+    var self = this;
+    var isEdit = !!existing;
+    var html = '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="cat-name" value="' + (existing ? UI.escapeHtml(existing.name) : '') + '" required></div>' +
+      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cat-desc" rows="2">' + (existing ? UI.escapeHtml(existing.description || '') : '') + '</textarea></div>';
+
+    UI.modal(isEdit ? 'Modifier la categorie' : 'Ajouter une categorie', html, [
+      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+      { label: isEdit ? 'Enregistrer' : 'Ajouter', cls: 'btn-primary', callback: function(m) {
+        var name = document.getElementById('cat-name').value.trim();
+        if (!name) { UI.toast('Nom requis.', 'error'); return; }
+        var description = document.getElementById('cat-desc').value.trim();
+        var payload = { name: name, description: description || null };
+        var promise = isEdit ? API.updateCategory(existing.id, payload) : API.createCategory(payload);
+        promise
+          .then(function() { UI.toast(isEdit ? 'Categorie modifiee.' : 'Categorie ajoutee.', 'success'); m.close(); self._loadCategories(); })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
+      } }
+    ]);
   },
 
   // === Anomalies d'import ===
@@ -154,15 +182,6 @@ var Parametres = {
     });
   },
 
-  _addCategory: function() {
-    var self = this;
-    var name = document.getElementById('new-cat-name').value.trim();
-    if (!name) { UI.toast('Nom requis.', 'error'); return; }
-    API.createCategory({ name: name })
-      .then(function() { UI.toast('Categorie ajoutee.', 'success'); document.getElementById('new-cat-name').value = ''; self._loadCategories(); })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
-  },
-
   _deleteCategory: function(id) {
     var self = this;
     UI.confirm('Supprimer cette categorie ?')
@@ -181,30 +200,52 @@ var Parametres = {
         for (var i = 0; i < data.unites.length; i++) {
           var u = data.unites[i];
           html += '<tr><td><strong>' + UI.escapeHtml(u.label) + '</strong></td><td class="text-sm text-muted">' + UI.escapeHtml(u.code) + '</td>' +
-            '<td><button class="btn btn-sm btn-danger btn-del-unite" data-id="' + u.id + '">Supprimer</button></td></tr>';
+            '<td class="actions"><button class="btn btn-sm btn-secondary btn-edit-unite" data-id="' + u.id + '">Modifier</button>' +
+            '<button class="btn btn-sm btn-danger btn-del-unite" data-id="' + u.id + '">Supprimer</button></td></tr>';
         }
         html += '</tbody></table></div>';
         el.innerHTML = html;
+        el.querySelectorAll('.btn-edit-unite').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var u = data.unites.find(function(x) { return x.id === parseInt(btn.getAttribute('data-id'), 10); });
+            if (u) self._showUniteForm(u);
+          });
+        });
         el.querySelectorAll('.btn-del-unite').forEach(function(btn) {
           btn.addEventListener('click', function() { self._deleteUnite(parseInt(this.getAttribute('data-id'))); });
         });
       }).catch(function() {});
   },
 
-  _addUnite: function() {
+  _showUniteForm: function(existing) {
     var self = this;
-    var label = document.getElementById('new-unite-label').value.trim();
-    if (!label) { UI.toast('Nom requis.', 'error'); return; }
-    API.createUnite({ label: label })
-      .then(function() { UI.toast('Unite ajoutee.', 'success'); document.getElementById('new-unite-label').value = ''; self._loadUnites(); })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
+    var isEdit = !!existing;
+    var html = '<div class="form-group"><label class="form-label">Libellé *</label><input type="text" class="form-input" id="unite-label" value="' + (existing ? UI.escapeHtml(existing.label) : '') + '" placeholder="ex: Kg" required></div>' +
+      (isEdit ? '<p class="text-sm text-muted">Code interne : <code>' + UI.escapeHtml(existing.code) + '</code> (ne change pas, pour ne pas casser les articles deja lies).</p>' : '');
+
+    UI.modal(isEdit ? 'Modifier l\'unité' : 'Ajouter une unité', html, [
+      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+      { label: isEdit ? 'Enregistrer' : 'Ajouter', cls: 'btn-primary', callback: function(m) {
+        var label = document.getElementById('unite-label').value.trim();
+        if (!label) { UI.toast('Nom requis.', 'error'); return; }
+        var promise = isEdit ? API.updateUnite(existing.id, { label: label }) : API.createUnite({ label: label });
+        promise
+          .then(function() {
+            UI.toast(isEdit ? 'Unité modifiée.' : 'Unité ajoutée.', 'success');
+            m.close();
+            self._loadUnites();
+            UI.loadUnitesCache();
+          })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
+      } }
+    ]);
   },
 
   _deleteUnite: function(id) {
     var self = this;
     UI.confirm('Supprimer cette unite ?')
       .then(function(ok) { if (!ok) return;
-        API.deleteUnite(id).then(function() { UI.toast('Supprimee.', 'success'); self._loadUnites(); }).catch(function(err) { UI.toast(err.message, 'error'); }); });
+        API.deleteUnite(id).then(function() { UI.toast('Supprimee.', 'success'); self._loadUnites(); UI.loadUnitesCache(); }).catch(function(err) { UI.toast(err.message, 'error'); }); });
   },
 
   // === Localites ===

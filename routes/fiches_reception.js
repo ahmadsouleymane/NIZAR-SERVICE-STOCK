@@ -63,7 +63,7 @@ router.get('/:id', authenticate, (req, res) => {
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
   const lignes = db.prepare(`
-    SELECT fra.*, a.nom as article_nom, a.reference, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite, a.type_article
+    SELECT fra.*, a.nom as article_nom, a.reference, COALESCE((SELECT label FROM unites WHERE code = COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite)), NULLIF(TRIM(fra.unite), ''), a.unite) as unite, a.type_article
     FROM fiche_reception_articles fra
     LEFT JOIN articles a ON fra.article_id = a.id
     WHERE fra.fiche_id = ?
@@ -168,7 +168,7 @@ router.post('/', authenticate, async (req, res) => {
     `).get(ficheId);
 
     const lignes = db.prepare(`
-      SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
+      SELECT fra.*, a.nom as article_nom, COALESCE((SELECT label FROM unites WHERE code = COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite)), NULLIF(TRIM(fra.unite), ''), a.unite) as unite
       FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
     `).all(ficheId);
 
@@ -270,7 +270,7 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
       FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
     `).get(ficheId);
     const lignes = db.prepare(`
-      SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
+      SELECT fra.*, a.nom as article_nom, COALESCE((SELECT label FROM unites WHERE code = COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite)), NULLIF(TRIM(fra.unite), ''), a.unite) as unite
       FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
     `).all(ficheId);
 
@@ -289,23 +289,16 @@ router.put('/:id', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// GET /api/fiches/:id/pdf — telecharger le PDF
+// GET /api/fiches/:id/pdf — telecharger le PDF. Toujours regenere a partir des
+// donnees actuelles (article, unite, destination...) : jamais de version figee
+// dans le temps, meme pour une fiche deja envoyee.
 router.get('/:id/pdf', authenticate, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
 
-  // Si on a un fichier_path, le servir
-  if (fiche.fichier_path) {
-    const fullPath = path.join(__dirname, '..', 'public', fiche.fichier_path);
-    if (fs.existsSync(fullPath)) {
-      return res.download(fullPath);
-    }
-  }
-
-  // Sinon regenerer le PDF
   const lignes = db.prepare(`
-    SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
+    SELECT fra.*, a.nom as article_nom, COALESCE((SELECT label FROM unites WHERE code = COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite)), NULLIF(TRIM(fra.unite), ''), a.unite) as unite
     FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
   `).all(req.params.id);
 
@@ -314,10 +307,16 @@ router.get('/:id/pdf', authenticate, (req, res) => {
     FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
 
+  const uploadsDir = require('../services/paths').uploadDir;
+  const ancienFichier = fiche.fichier_path;
   generateFichePDF(ficheInfo, lignes)
     .then(pdfPath => {
-      db.prepare('UPDATE fiches_reception SET fichier_path = ? WHERE id = ?').run(pdfPath, req.params.id);
-      const fullPath = path.join(__dirname, '..', 'public', pdfPath);
+      db.prepare("UPDATE fiches_reception SET fichier_path = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(pdfPath, req.params.id);
+      if (ancienFichier && ancienFichier !== pdfPath) {
+        const ancienFull = path.resolve(uploadsDir, String(ancienFichier).replace(/^\/uploads\//, ''));
+        if (fs.existsSync(ancienFull)) { try { fs.unlinkSync(ancienFull); } catch (e) { /* deja supprime */ } }
+      }
+      const fullPath = path.resolve(uploadsDir, String(pdfPath).replace(/^\/uploads\//, ''));
       res.download(fullPath);
     })
     .catch(err => res.status(500).json({ error: 'Erreur generation PDF: ' + err.message }));

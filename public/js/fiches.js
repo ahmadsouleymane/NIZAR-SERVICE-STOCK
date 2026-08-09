@@ -111,7 +111,7 @@ var Fiches = {
         '<td><strong>' + UI.escapeHtml(f.localite_nom) + '</strong>' + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</td>' +
         '<td>' + this._statutBadge(f.statut) + '</td>' +
         '<td>' + (f.nb_lignes || 0) + '</td>' +
-        '<td>' + (f.fichier_path ? '<a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-sm btn-accent" style="font-size:0.7rem">PDF</a>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
+        '<td>' + (f.fichier_path ? '<span class="badge badge-success">Disponible</span>' : '<span class="text-sm text-muted">—</span>') + '</td>' +
         '<td>' + scanCell + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-view-fiche" data-id="' + f.id + '">Details</button>' +
@@ -156,10 +156,19 @@ var Fiches = {
 
   // ===== Formulaire de sortie =====
   _uniteOptions: function(articleType, current) {
-    // Billets / articles numérotés : gérés par lots de 500 ou 50
-    var list = articleType === 'numerote'
-      ? ['Lot de 500', 'Lot de 50']
-      : ['Unité', 'Carton', 'Rouleau', 'Paquet', 'Lot', 'Boîte'];
+    var list;
+    if (articleType === 'numerote') {
+      // Billets / articles numérotés : gérés par lots de 500 ou 50 (mécanisme
+      // propre à la numérotation, distinct des unités gérées dans Paramètres).
+      list = ['Lot de 500', 'Lot de 50'];
+    } else {
+      // Unités gérées par l'admin (Paramètres) en priorité, complétées par les
+      // choix historiques pour ne pas perdre les valeurs deja utilisees.
+      var fromDb = (UI._unitesMap ? Object.keys(UI._unitesMap).map(function(k) { return UI._unitesMap[k]; }) : []);
+      var defaults = ['Unité', 'Carton', 'Rouleau', 'Paquet', 'Lot', 'Boîte'];
+      list = fromDb.slice();
+      defaults.forEach(function(d) { if (list.indexOf(d) === -1) list.push(d); });
+    }
     var html = '';
     for (var i = 0; i < list.length; i++) {
       html += '<option value="' + UI.escapeHtml(list[i]) + '"' + (list[i] === current ? ' selected' : '') + '>' + UI.escapeHtml(list[i]) + '</option>';
@@ -258,7 +267,7 @@ var Fiches = {
         search: function(term, cb) {
           API.getArticles({ search: term }).then(function(data) {
             cb(data.articles.map(function(a) {
-              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article, unite: a.unite };
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article, unite: UI.uniteLabel(a.unite) };
             }));
           }).catch(function() { cb([]); });
         },
@@ -393,9 +402,6 @@ var Fiches = {
         html += '</tbody></table></div>';
       }
 
-      if (f.fichier_path && f.fichier_path.endsWith('.pdf')) {
-        html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Télécharger le PDF (ré-imprimable)</a></div>';
-      }
       if (f.scan_path) {
         html += '<div class="mt-md"><strong>Photo du retour:</strong><br><img src="' + UI.escapeHtml(f.scan_path) + '" style="max-width:100%;max-height:250px;border:1px solid var(--color-border);border-radius:8px;margin-top:0.5rem"></div>';
       }
