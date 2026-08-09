@@ -30,6 +30,8 @@ router.post('/login', (req, res) => {
     { expiresIn: '24h', algorithm: 'HS256' }
   );
 
+  db.prepare("UPDATE users SET last_login = datetime('now','localtime') WHERE id = ?").run(user.id);
+
   res.json({
     token,
     user: { id: user.id, username: user.username, role: user.role }

@@ -265,6 +265,7 @@ function initDB(dbPath) {
   // Compteur incremente a chaque changement de role/mot de passe : permet de
   // revoquer les jetons JWT deja emis (le token embarque la version au login).
   ensureColumn(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn(db, 'users', 'last_login', 'TEXT');
 
   // Migration : nouveau pipeline de statuts (envoyee -> retournee -> archivee).
   // Si la contrainte CHECK de fiches_reception contient encore « signee » (ancien

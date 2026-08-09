@@ -282,12 +282,13 @@ var Parametres = {
       .then(function(data) {
         var el = document.getElementById('users-list');
         if (!data.users.length) { el.innerHTML = '<p class="text-muted text-center">Aucun utilisateur.</p>'; return; }
-        var html = '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Role</th><th>Cree le</th><th>Actions</th></tr></thead><tbody>';
+        var html = '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Role</th><th>Cree le</th><th>Derniere connexion</th><th>Actions</th></tr></thead><tbody>';
         for (var i = 0; i < data.users.length; i++) {
           var u = data.users[i];
           html += '<tr><td><strong>' + UI.escapeHtml(u.username) + '</strong></td>' +
             '<td><span class="badge ' + (u.role === 'admin' ? 'badge-info' : 'badge-neutral') + '">' + u.role + '</span></td>' +
             '<td>' + UI.formatDate(u.created_at) + '</td>' +
+            '<td>' + (u.last_login ? UI.formatDate(u.last_login) : '<span class="text-muted">Jamais</span>') + '</td>' +
             '<td class="actions"><button class="btn btn-sm btn-secondary btn-edit-user" data-id="' + u.id + '">Modifier</button>' +
             (u.id !== self._user.id ? '<button class="btn btn-sm btn-danger btn-del-user" data-id="' + u.id + '">Supprimer</button>' : '') + '</td></tr>';
         }

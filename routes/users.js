@@ -8,7 +8,7 @@ const router = express.Router();
 // GET /api/users (admin only)
 router.get('/', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
-  const users = db.prepare('SELECT id, username, role, created_at FROM users ORDER BY id ASC').all();
+  const users = db.prepare('SELECT id, username, role, created_at, last_login FROM users ORDER BY id ASC').all();
   res.json({ users });
 });
 
