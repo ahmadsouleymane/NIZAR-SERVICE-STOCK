@@ -20,6 +20,9 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   if (!username || !password) {
     return res.status(400).json({ error: 'Nom d\'utilisateur et mot de passe requis.' });
   }
+  if (password.length < 8) {
+    return res.status(400).json({ error: 'Le mot de passe doit faire au moins 8 caracteres.' });
+  }
   if (!['admin', 'assistant'].includes(role)) {
     return res.status(400).json({ error: 'Role invalide (admin ou assistant).' });
   }
@@ -46,6 +49,9 @@ router.put('/:id', authenticate, requireAdmin, (req, res) => {
   if (username && username !== user.username) {
     const dup = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, req.params.id);
     if (dup) return res.status(409).json({ error: 'Ce nom d\'utilisateur existe deja.' });
+  }
+  if (password && password.length < 8) {
+    return res.status(400).json({ error: 'Le mot de passe doit faire au moins 8 caracteres.' });
   }
 
   if (password) {
@@ -94,8 +100,8 @@ router.patch('/me/password', authenticate, (req, res) => {
     return res.status(400).json({ error: 'Mot de passe actuel et nouveau mot de passe requis.' });
   }
 
-  if (new_password.length < 4) {
-    return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 4 caracteres.' });
+  if (new_password.length < 8) {
+    return res.status(400).json({ error: 'Le nouveau mot de passe doit faire au moins 8 caracteres.' });
   }
 
   const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
