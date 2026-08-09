@@ -282,8 +282,11 @@ router.get('/stock-pdf', authenticate, (req, res) => {
 const R = require('../services/rapports');
 
 const T = (header, key, width) => ({ header, key, width });
-const N = (header, key, width) => ({ header, key, width, numFmt: '#,##0', align: 'right' });
-const F = (header, key, width) => ({ header, key, width, numFmt: '#,##0', align: 'right' });
+// N et F produisaient strictement le meme objet (numFmt '#,##0' align right) : on les
+// unifie pour eviter qu'un format monetaire evolue sans son homologue numerique.
+const NUM = (header, key, width) => ({ header, key, width, numFmt: '#,##0', align: 'right' });
+const N = NUM;
+const F = NUM;
 
 const DIM_LABEL = {
   jour: 'Jour', mois: 'Mois', article: 'Article', categorie: 'Catégorie',

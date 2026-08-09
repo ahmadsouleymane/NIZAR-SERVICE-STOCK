@@ -75,6 +75,16 @@ var ReportUI = {
     var has = function(f) { return cfg.filters.indexOf(f) !== -1; };
     var html = '';
     if (has('dates')) {
+      var periods = [
+        { v: '7j', l: '7 jours' }, { v: '30j', l: '30 jours' },
+        { v: 'mois', l: 'Ce mois' }, { v: 'an', l: 'Cette année' }, { v: '', l: 'Tout' }
+      ];
+      var periodHtml = '';
+      for (var pi = 0; pi < periods.length; pi++) {
+        var act = st.period === periods[pi].v ? ' report-period-active' : '';
+        periodHtml += '<button type="button" class="report-period-btn' + act + '" data-period="' + periods[pi].v + '">' + periods[pi].l + '</button>';
+      }
+      html += '<div class="report-periods">' + periodHtml + '</div>';
       html += '<div class="form-group"><label class="form-label">Du</label><input type="date" class="form-input" id="rf-debut" value="' + st.debut + '"></div>';
       html += '<div class="form-group"><label class="form-label">Au</label><input type="date" class="form-input" id="rf-fin" value="' + st.fin + '"></div>';
     }

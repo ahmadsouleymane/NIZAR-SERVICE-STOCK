@@ -11,12 +11,14 @@ router.get('/', authenticate, (req, res) => {
   let where = 'WHERE 1=1';
   const params = [];
 
-  if (article_id) { where += ' AND s.article_id = ?'; params.push(article_id); }
+  // Les ids sont convertis en entiers : une comparaison SQLite entre une colonne
+  // INTEGER et un paramètre TEXT ne matche jamais (ex: `localite_id = '3'` renvoie 0).
+  if (article_id) { where += ' AND s.article_id = ?'; params.push(parseInt(article_id, 10)); }
   if (source_type) { where += ' AND s.source_type = ?'; params.push(source_type); }
   if (debut) { where += ' AND s.date >= ?'; params.push(debut); }
   if (fin) { where += ' AND s.date <= ?'; params.push(fin + ' 23:59:59'); }
   if (localite_id) {
-    where += ' AND fr.localite_id = ?'; params.push(localite_id);
+    where += ' AND COALESCE(fr.localite_id, fr2.localite_id) = ?'; params.push(parseInt(localite_id, 10));
   }
   if (search) {
     where += ' AND (CAST(s.numero_debut AS INTEGER) <= ? AND CAST(s.numero_fin AS INTEGER) >= ?)';

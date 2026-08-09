@@ -254,6 +254,9 @@ function initDB(dbPath) {
   ensureColumn(db, 'fiche_reception_articles', 'unite', "TEXT DEFAULT ''");
   ensureColumn(db, 'fiches_entree', 'fichier_path', 'TEXT');
   ensureColumn(db, 'fiches_entree', 'numero_fiche_besoin', 'TEXT');
+  // Compteur incremente a chaque changement de role/mot de passe : permet de
+  // revoquer les jetons JWT deja emis (le token embarque la version au login).
+  ensureColumn(db, 'users', 'token_version', 'INTEGER NOT NULL DEFAULT 0');
 
   // Migration : nouveau pipeline de statuts (envoyee -> retournee -> archivee).
   // Si la contrainte CHECK de fiches_reception contient encore « signee » (ancien

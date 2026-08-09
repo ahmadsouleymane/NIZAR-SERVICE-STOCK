@@ -316,7 +316,7 @@ var Rapports = {
   state: {
     debut: '', fin: '', article_id: '', categorie_id: '', localite_id: '',
     fournisseur_id: '', user_id: '', type: '', group_by: '', limit: '',
-    stock_min_jours: '30', jours: '90'
+    stock_min_jours: '30', jours: '90', period: ''
   },
 
   _pad: function(n) { return String(n).padStart(2, '0'); },
@@ -423,6 +423,36 @@ var Rapports = {
     }
     var reset = document.getElementById('rf-reset');
     if (reset) reset.addEventListener('click', function() { self._resetFilters(); });
+
+    // Boutons de periode rapide (7j / 30j / mois / annee / tout)
+    var periodBtns = document.querySelectorAll('.report-period-btn');
+    for (var pb = 0; pb < periodBtns.length; pb++) {
+      (function(btn) {
+        btn.addEventListener('click', function() {
+          self._setPeriod(btn.getAttribute('data-period'));
+        });
+      })(periodBtns[pb]);
+    }
+  },
+
+  // Applique une periode rapide aux filtres de dates puis recharge le rapport.
+  _setPeriod: function(p) {
+    var self = this;
+    var debut = '';
+    var fin = '';
+    if (p) {
+      var now = new Date();
+      fin = this._iso(now);
+      if (p === '7j') { var d = new Date(now); d.setDate(d.getDate() - 7); debut = this._iso(d); }
+      else if (p === '30j') { var d2 = new Date(now); d2.setDate(d2.getDate() - 30); debut = this._iso(d2); }
+      else if (p === 'mois') { debut = this._iso(new Date(now.getFullYear(), now.getMonth(), 1)); }
+      else if (p === 'an') { debut = this._iso(new Date(now.getFullYear(), 0, 1)); }
+    }
+    this.state.debut = debut;
+    this.state.fin = fin;
+    this.state.period = p;
+    this._renderFilters();
+    this._loadReport();
   },
 
   _resetFilters: function() {
@@ -433,7 +463,7 @@ var Rapports = {
     this.state.fournisseur_id = ''; this.state.type = ''; this.state.user_id = '';
     this.state.group_by = cfg.groupBy || '';
     this.state.limit = cfg.topN ? String(cfg.topN[0]) : '';
-    this.state.stock_min_jours = '30'; this.state.jours = '90';
+    this.state.stock_min_jours = '30'; this.state.jours = '90'; this.state.period = '';
     this._renderFilters();
     this._loadReport();
   },

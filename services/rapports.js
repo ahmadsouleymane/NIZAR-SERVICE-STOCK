@@ -418,15 +418,24 @@ function fichesReception(db, opts) {
 }
 
 // Billets en circulation par agence (émis / envoyés / retournés)
+// Note : source_id d'une série 'sortie' référence soit fiches_reception.id (flux normal
+// d'envoi via fiches_reception.js), soit mouvements.id (corrections admin via
+// routes/mouvements.js PATCH /:id/numero, cf. import historique). Les deux jointures sont
+// nécessaires — une jointure unique sur mouvements ratait silencieusement le flux normal.
 function series(db) {
   const rows = db.prepare(`
     SELECT COALESCE(l.nom,'(sans agence)') AS libelle,
-      COALESCE((SELECT SUM(s.quantite) FROM series_numeros s JOIN mouvements mv ON mv.id = s.source_id AND s.source_type='sortie'
-                WHERE mv.localite_id = l.id),0) AS envoyes,
+      COALESCE((
+        SELECT SUM(s.quantite) FROM series_numeros s
+        LEFT JOIN fiches_reception fr ON fr.id = s.source_id AND s.source_type = 'sortie'
+        LEFT JOIN mouvements mv ON mv.id = s.source_id AND s.source_type = 'sortie'
+        WHERE s.source_type = 'sortie' AND COALESCE(fr.localite_id, mv.localite_id) = l.id
+      ),0) AS envoyes,
       COALESCE((SELECT SUM(r.quantite) FROM retours_carnets r WHERE r.localite_id = l.id AND r.type_retour='usage'),0) AS retournes_usage,
       COALESCE((SELECT SUM(r.quantite) FROM retours_carnets r WHERE r.localite_id = l.id AND r.type_retour='non_utilise'),0) AS retournes_stock
     FROM localites l
-    WHERE l.id IN (SELECT DISTINCT localite_id FROM mouvements WHERE type='sortie' AND localite_id IS NOT NULL)
+    WHERE l.id IN (SELECT DISTINCT fr2.localite_id FROM series_numeros s2 JOIN fiches_reception fr2 ON fr2.id = s2.source_id WHERE s2.source_type='sortie' AND fr2.localite_id IS NOT NULL)
+       OR l.id IN (SELECT DISTINCT localite_id FROM mouvements WHERE type='sortie' AND localite_id IS NOT NULL)
        OR l.id IN (SELECT DISTINCT localite_id FROM retours_carnets)
     ORDER BY envoyes DESC`).all();
   return rows.map(r => ({ ...r, en_circulation: r.envoyes - r.retournes_usage - r.retournes_stock }));

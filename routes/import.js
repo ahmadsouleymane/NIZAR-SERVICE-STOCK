@@ -53,7 +53,9 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
             const dateStr = row[0];
             const libelle = String(row[1]).trim();
             const localite = String(row[2] || '').trim();
-            const quantite = parseFloat(row[3]) || 1;
+            const qteCell = row[3];
+            const quantite = qteCell === undefined || qteCell === null || qteCell === '' ? 1 : parseFloat(qteCell);
+            if (!Number.isFinite(quantite) || quantite <= 0) throw new Error('Quantite invalide : ' + qteCell);
             const numeros = row[4] ? String(row[4]).trim() : '';
 
             // Creer ou recuperer l'article
@@ -113,11 +115,12 @@ router.post('/excel', authenticate, requireAdmin, upload.single('file'), (req, r
 
 // POST /api/import/entrees — importer des entrees fournisseur depuis Excel
 // Format : Article | Quantite | N° debut | N° fin | Observation
-router.post('/entrees', authenticate, upload.single('file'), (req, res) => {
+router.post('/entrees', authenticate, requireAdmin, upload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'Fichier Excel requis.' });
   const db = req.db;
   const { fournisseur_id, numero_bl, numero_facture, numero_fiche_besoin } = req.body;
   let imported = { articles: 0, erreurs: [] };
+  let reference = null;
 
   try {
     const workbook = XLSX.readFile(req.file.path);
@@ -129,24 +132,20 @@ router.post('/entrees', authenticate, upload.single('file'), (req, res) => {
     const y = now.getFullYear().toString().slice(-2);
     const m = String(now.getMonth() + 1).padStart(2, '0');
     const seq = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'fiches_entree'").get();
-    const reference = 'FE-' + y + m + '-' + String((seq ? seq.seq : 0) + 1).padStart(3, '0');
+    reference = 'FE-' + y + m + '-' + String((seq ? seq.seq : 0) + 1).padStart(3, '0');
     let ficheId = null;
 
     const { checkOverlap, recordSerie } = require('../services/series');
 
     const transaction = db.transaction(() => {
-      const result = db.prepare(`
-        INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, numero_fiche_besoin, user_id, statut, validee, articles_json)
-        VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee', 1, '[]')
-      `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, req.user.id);
-      ficheId = result.lastInsertRowid;
-
       for (let i = 1; i < data.length; i++) {
         const row = data[i];
         if (!row || !row[0]) continue;
         try {
           const articleNom = String(row[0]).trim();
-          const quantite = parseInt(row[1], 10) || 1;
+          const qteCell = row[1];
+          const quantite = qteCell === undefined || qteCell === null || qteCell === '' ? 1 : parseInt(qteCell, 10);
+          if (!Number.isFinite(quantite) || quantite <= 0) { imported.erreurs.push('Ligne ' + (i + 1) + ' : quantite invalide (' + qteCell + ').'); continue; }
           const nd = row[2] ? String(row[2]).trim() : null;
           const nf = row[3] ? String(row[3]).trim() : null;
           const obs = row[4] ? String(row[4]).trim() : null;
@@ -157,6 +156,19 @@ router.post('/entrees', authenticate, upload.single('file'), (req, res) => {
           if (article.type_article === 'numerote') {
             if (!nd || !nf) { imported.erreurs.push('Ligne ' + (i + 1) + ' : N° debut/fin requis pour article numerote.'); continue; }
             if (checkOverlap(db, article.id, nd, nf, 'entree')) { imported.erreurs.push('Ligne ' + (i + 1) + ' : chevauchement plage.'); continue; }
+          }
+
+          // La fiche n'est creee qu'a la premiere ligne valide : un fichier dont
+          // toutes les lignes sont rejetees ne doit pas produire une fiche vide.
+          if (!ficheId) {
+            const result = db.prepare(`
+              INSERT INTO fiches_entree (reference, fournisseur_id, date_entree, numero_bl, numero_facture, numero_fiche_besoin, user_id, statut, validee, articles_json)
+              VALUES (?, ?, datetime('now','localtime'), ?, ?, ?, ?, 'validee', 1, '[]')
+            `).run(reference, fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, req.user.id);
+            ficheId = result.lastInsertRowid;
+          }
+
+          if (article.type_article === 'numerote') {
             recordSerie(db, article.id, nd, nf, quantite, 'entree', ficheId);
           }
 
@@ -173,6 +185,9 @@ router.post('/entrees', authenticate, upload.single('file'), (req, res) => {
     return res.status(400).json({ error: 'Erreur de lecture : ' + err.message });
   }
   try { fs.unlinkSync(req.file.path); } catch (e) {}
+  if (imported.articles === 0) {
+    return res.status(400).json({ imported, message: 'Aucune entree importee : ' + imported.erreurs.length + ' ligne(s) en erreur.' });
+  }
   res.json({ imported, reference, message: 'Import termine : ' + imported.articles + ' entrees, ' + imported.erreurs.length + ' erreurs.' });
 });
 

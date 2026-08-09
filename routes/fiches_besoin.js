@@ -7,7 +7,7 @@ const { createUpload } = require('../services/uploads');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
-const upload = createUpload('scan');
+const [upload, verifyUpload] = createUpload('scan');
 
 function generateRef(db) {
   const now = new Date();
@@ -125,7 +125,7 @@ router.patch('/:id/statut', authenticate, (req, res) => {
 });
 
 // POST /api/fiches-besoin/:id/scan — upload du retour signe -> statut revenue
-router.post('/:id/scan', authenticate, upload, (req, res) => {
+router.post('/:id/scan', authenticate, upload, verifyUpload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_besoin WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche de besoin introuvable.' });

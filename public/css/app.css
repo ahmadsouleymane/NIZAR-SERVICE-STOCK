@@ -1182,6 +1182,19 @@ td.actions { display: flex; gap: 0.25rem; flex-wrap: wrap; white-space: nowrap; 
 .report-filters .form-group { margin-bottom: 0; min-width: 130px; flex: 1 1 150px; }
 .report-filters .form-input { width: 100%; }
 .report-filters #rf-reset { margin-left: auto; }
+.report-periods {
+  display: flex; flex-wrap: wrap; gap: 0.375rem; align-items: center;
+  width: 100%; margin-bottom: 0.25rem;
+}
+.report-period-btn {
+  border: 1px solid var(--color-border); background: transparent;
+  color: var(--color-text); font-size: 0.75rem; padding: 0.3rem 0.6rem;
+  border-radius: 999px; cursor: pointer; transition: all 0.15s ease;
+}
+.report-period-btn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.report-period-btn.report-period-active {
+  background: var(--color-primary); border-color: var(--color-primary); color: #fff;
+}
 .report-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.625rem; }
 .report-kpi { padding: 0.75rem 1rem; }
 .report-kpi .kpi-card-value { font-family: var(--font-mono); }

@@ -338,9 +338,13 @@ var Parametres = {
     var self = this;
     API.changePassword(currentPassword, newPassword)
       .then(function() {
-        UI.toast('Mot de passe modifie avec succes.', 'success');
-        document.getElementById('current-password').value = '';
-        document.getElementById('new-password').value = '';
+        UI.toast('Mot de passe modifie. Reconnexion requise.', 'success');
+        // Le changement de mot de passe revoque la session en cours (cote serveur) :
+        // on reconnecte immediatement plutot que de laisser le prochain appel echouer en 401.
+        setTimeout(function() {
+          API.clearToken();
+          window.location.hash = '#login';
+        }, 1200);
       })
       .catch(function(err) { UI.toast(err.message, 'error'); });
   }

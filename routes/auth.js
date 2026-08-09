@@ -14,7 +14,7 @@ router.post('/login', (req, res) => {
   }
 
   const db = req.db;
-  const user = db.prepare('SELECT id, username, password, role FROM users WHERE username = ?').get(username);
+  const user = db.prepare('SELECT id, username, password, role, token_version FROM users WHERE username = ?').get(username);
   if (!user) {
     return res.status(401).json({ error: 'Identifiants incorrects.' });
   }
@@ -25,7 +25,7 @@ router.post('/login', (req, res) => {
   }
 
   const token = jwt.sign(
-    { id: user.id, username: user.username, role: user.role },
+    { id: user.id, username: user.username, role: user.role, tv: user.token_version || 0 },
     JWT_SECRET,
     { expiresIn: '24h' }
   );

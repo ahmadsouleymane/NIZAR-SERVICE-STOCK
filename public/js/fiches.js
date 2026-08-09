@@ -283,6 +283,9 @@ var Fiches = {
   },
 
   _saveEnvoi: function(modal) {
+    var submitBtn = document.getElementById('modal-btn-1');
+    if (submitBtn && submitBtn.disabled) return;
+
     var locId = parseInt(document.getElementById('envoi-loc').value);
 
     if (!locId) { UI.toast('Choisissez une destination.', 'error'); return; }
@@ -303,6 +306,8 @@ var Fiches = {
     var self = this;
     var dateInput = document.getElementById('envoi-date');
     var dateEnvoi = dateInput ? (dateInput.value || null) : null;
+
+    if (submitBtn) submitBtn.disabled = true;
 
     // Pre-ouvrir la fenetre d'impression pendant le geste utilisateur (anti-bloqueur de popup) :
     // on la redirigera vers la fiche creee une fois la creation terminee.
@@ -326,6 +331,7 @@ var Fiches = {
       })
       .catch(function(err) {
         if (printWin) { try { printWin.close(); } catch (e) {} }
+        if (submitBtn) submitBtn.disabled = false;
         UI.toast(err.message, 'error');
       });
   },

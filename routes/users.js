@@ -53,11 +53,18 @@ router.put('/:id', authenticate, requireAdmin, (req, res) => {
     db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.params.id);
   }
 
+  const newRole = role && ['admin', 'assistant'].includes(role) ? role : user.role;
   db.prepare('UPDATE users SET username = ?, role = ? WHERE id = ?').run(
     username || user.username,
-    role && ['admin', 'assistant'].includes(role) ? role : user.role,
+    newRole,
     req.params.id
   );
+
+  // Revoquer les jetons deja emis si le role ou le mot de passe a change : sans
+  // ca, un compte retrograde garde ses droits admin jusqu'a l'expiration du JWT (24h).
+  if (password || newRole !== user.role) {
+    db.prepare('UPDATE users SET token_version = token_version + 1 WHERE id = ?').run(req.params.id);
+  }
 
   const updated = db.prepare('SELECT id, username, role, created_at FROM users WHERE id = ?').get(req.params.id);
   logAudit(db, req.user.id, req.user.username, 'MODIF_UTILISATEUR', updated.username || String(req.params.id));
@@ -98,9 +105,9 @@ router.patch('/me/password', authenticate, (req, res) => {
   if (!valid) return res.status(400).json({ error: 'Mot de passe actuel incorrect.' });
 
   const hash = bcrypt.hashSync(new_password, 10);
-  db.prepare('UPDATE users SET password = ? WHERE id = ?').run(hash, req.user.id);
+  db.prepare('UPDATE users SET password = ?, token_version = token_version + 1 WHERE id = ?').run(hash, req.user.id);
 
-  res.json({ message: 'Mot de passe modifie avec succes.' });
+  res.json({ message: 'Mot de passe modifie avec succes. Reconnectez-vous.' });
 });
 
 module.exports = router;

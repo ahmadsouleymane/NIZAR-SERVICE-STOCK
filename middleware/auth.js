@@ -18,6 +18,17 @@ function authenticate(req, res, next) {
   const token = header.split(' ')[1];
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Revocation : le jeton embarque la token_version au moment du login. Si le
+    // role ou le mot de passe a change depuis (routes/users.js incremente la
+    // colonne), le jeton deja emis est refuse meme s'il n'est pas encore expire.
+    if (req.db) {
+      const row = req.db.prepare('SELECT token_version FROM users WHERE id = ?').get(decoded.id);
+      if (!row || (row.token_version || 0) !== (decoded.tv || 0)) {
+        return res.status(401).json({ error: 'Session invalidee. Veuillez vous reconnecter.' });
+      }
+    }
+
     req.user = decoded;
     next();
   } catch (err) {

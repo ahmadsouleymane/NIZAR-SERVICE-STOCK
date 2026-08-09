@@ -8,7 +8,7 @@ const { createUpload } = require('../services/uploads');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
-const upload = createUpload('photo');
+const [upload, verifyUpload] = createUpload('photo');
 
 function generateRef(db) {
   // Reference basee sur la sequence autoincrement : jamais reutilisee, donc pas de collision
@@ -251,7 +251,7 @@ router.post('/:id/valider', authenticate, (req, res) => {
 });
 
 // POST /api/entrees/:id/photos — upload photo bon de livraison / facture
-router.post('/:id/photos', authenticate, upload, (req, res) => {
+router.post('/:id/photos', authenticate, upload, verifyUpload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });

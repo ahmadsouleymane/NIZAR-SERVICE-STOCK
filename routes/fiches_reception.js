@@ -9,7 +9,7 @@ const { createUpload } = require('../services/uploads');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
-const upload = createUpload('scan');
+const [upload, verifyUpload] = createUpload('scan');
 
 function generateRef(db) {
   // Reference basee sur la sequence autoincrement : jamais reutilisee, donc pas de collision
@@ -274,7 +274,7 @@ router.patch('/:id/statut', authenticate, (req, res) => {
 });
 
 // POST /api/fiches/:id/upload — photo du retour (obligatoire) : marque la fiche « retournee »
-router.post('/:id/upload', authenticate, upload, (req, res) => {
+router.post('/:id/upload', authenticate, upload, verifyUpload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });

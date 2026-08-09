@@ -130,6 +130,7 @@ var Entrees = {
       // Brouillon : cree a la premiere photo, les photos sont televersees immediatement
       self._draftId = null;
       self._draftRef = null;
+      self._draftPending = null;
       self._photosDone = { bl: false, facture: false };
       self._draftPhotos = { bl: false, facture: false };
 
@@ -334,9 +335,13 @@ var Entrees = {
 
   // Cree le brouillon d'entree a partir du formulaire courant (partage par _pickPhoto et
   // _genererBonLivraison — les deux peuvent etre le premier declencheur de la creation).
+  // Deux boutons (_pickPhoto et _genererBonLivraison) peuvent declencher _ensureDraft
+  // avant que la premiere creation n'ait resolu : on met en file les callbacks suivants
+  // au lieu de creer une deuxieme fiche d'entree en double (cf. _draftPending).
   _ensureDraft: function(cb) {
     var self = this;
     if (self._draftId) { cb(self._draftId); return; }
+    if (self._draftPending) { self._draftPending.push(cb); return; }
 
     var arts = [];
     for (var i = 0; i < self._lignes.length; i++) {
@@ -345,6 +350,8 @@ var Entrees = {
       arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
     }
     if (!arts.length) { UI.toast('Ajoutez d\'abord les articles.', 'error'); return; }
+
+    self._draftPending = [cb];
 
     var fourn = self._fournAC ? self._fournAC.value() : null;
     var blInput = document.getElementById('entree-bl');
@@ -358,9 +365,14 @@ var Entrees = {
       .then(function(data) {
         self._draftId = data.fiche.id;
         self._draftRef = data.fiche.reference;
-        cb(self._draftId);
+        var pending = self._draftPending || [];
+        self._draftPending = null;
+        for (var p = 0; p < pending.length; p++) pending[p](self._draftId);
       })
-      .catch(function(err) { UI.toast(err.message, 'error'); });
+      .catch(function(err) {
+        self._draftPending = null;
+        UI.toast(err.message, 'error');
+      });
   },
 
   _pickPhoto: function(type, label) {
