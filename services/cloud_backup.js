@@ -260,11 +260,15 @@ function start(db) {
     return;
   }
   // Sauvegarde périodique
-  const timer = setInterval(() => { save(db, 'periodique').catch(() => {}); }, INTERVAL_MS);
+  const timer = setInterval(() => {
+    save(db, 'periodique').catch((err) => console.error('[backup] Sauvegarde periodique echouee :', err.message));
+  }, INTERVAL_MS);
   timer.unref();
   // Sauvegarde à l'arrêt (Render envoie SIGTERM au redéploiement)
   process.on('SIGTERM', () => {
-    save(db, 'arret').catch(() => {}).finally(() => process.exit(0));
+    save(db, 'arret')
+      .catch((err) => console.error('[backup] Sauvegarde a l\'arret echouee :', err.message))
+      .finally(() => process.exit(0));
   });
 }
 

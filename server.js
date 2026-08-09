@@ -57,6 +57,7 @@ app.use((req, res, next) => {
   res.on('finish', () => {
     if (db && WRITE_METHODS.has(req.method) && res.statusCode >= 200 && res.statusCode < 400) {
       require('./services/cloud_backup').scheduleSave(db);
+      require('./services/r2_backup').scheduleSync();
     }
   });
   next();

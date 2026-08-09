@@ -108,6 +108,33 @@ async function syncUploads(uploadDir, knownKeys) {
   return uploaded;
 }
 
+// Etat partage (uploadDir + cles connues) pour permettre un declenchement
+// reactif (scheduleSync) en plus de l'intervalle periodique.
+let _uploadDir = null;
+let _knownKeys = null;
+let _pendingSyncTimer = null;
+const DEBOUNCE_MS = (parseInt(process.env.R2_SYNC_DEBOUNCE_SEC, 10) || 15) * 1000;
+
+async function doSync(reason) {
+  if (!_uploadDir) return;
+  if (!_knownKeys) {
+    try { _knownKeys = new Set(await listAllKeys()); }
+    catch (e) { console.error('[r2] Synchro (' + reason + ') impossible, liste des cles :', e.message); return; }
+  }
+  try { await syncUploads(_uploadDir, _knownKeys); }
+  catch (e) { console.error('[r2] Synchro (' + reason + ') echouee :', e.message); }
+}
+
+// Declenchee apres chaque upload (photo/PDF) via le middleware de server.js,
+// en plus de l'intervalle periodique — evite qu'un fichier tout juste pris en
+// photo ne soit perdu si le service redemarre avant la prochaine synchro (5 min).
+function scheduleSync() {
+  if (!enabled() || !_uploadDir) return;
+  if (_pendingSyncTimer) clearTimeout(_pendingSyncTimer);
+  _pendingSyncTimer = setTimeout(() => { _pendingSyncTimer = null; doSync('reactive'); }, DEBOUNCE_MS);
+  _pendingSyncTimer.unref();
+}
+
 // Démarrage du service (côté serveur)
 function start(uploadDir) {
   if (!enabled()) {
@@ -115,26 +142,20 @@ function start(uploadDir) {
     return;
   }
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  _uploadDir = uploadDir;
 
-  let knownKeys = null;
   // Restauration au démarrage (non bloquante)
-  restore(uploadDir).then(keys => { knownKeys = keys; }).catch(err =>
+  restore(uploadDir).then(keys => { _knownKeys = keys; }).catch(err =>
     console.error('[r2] Restauration impossible :', err.message));
 
-  // Synchronisation périodique local → R2
-  const timer = setInterval(async () => {
-    if (!knownKeys) { try { knownKeys = new Set(await listAllKeys()); } catch (e) { return; } }
-    try { await syncUploads(uploadDir, knownKeys); } catch (e) { console.error('[r2] Synchro :', e.message); }
-  }, INTERVAL_MS);
+  // Synchronisation périodique local → R2 (filet de securite, en plus du reactif)
+  const timer = setInterval(() => { doSync('periodique'); }, INTERVAL_MS);
   timer.unref();
 
   // Dernière synchro à l'arrêt (Render envoie SIGTERM au redéploiement)
   process.on('SIGTERM', () => {
-    (async () => {
-      if (!knownKeys) { try { knownKeys = new Set(await listAllKeys()); } catch (e) { knownKeys = new Set(); } }
-      try { await syncUploads(uploadDir, knownKeys); } catch (e) {}
-    })().finally(() => process.exit(0));
+    doSync('arret').finally(() => process.exit(0));
   });
 }
 
-module.exports = { enabled, restore, syncUploads, start, walk };
+module.exports = { enabled, restore, syncUploads, start, walk, scheduleSync };
