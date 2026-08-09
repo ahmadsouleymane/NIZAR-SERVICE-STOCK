@@ -30,6 +30,29 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   res.status(201).json({ localite });
 });
 
+router.put('/:id', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const l = db.prepare('SELECT * FROM localites WHERE id = ?').get(req.params.id);
+  if (!l) return res.status(404).json({ error: 'Localite introuvable.' });
+
+  const { nom, type, pays, est_service } = req.body;
+  if (!nom) return res.status(400).json({ error: 'Nom requis.' });
+
+  const typeVal = type || l.type;
+  if (!['national', 'international'].includes(typeVal)) {
+    return res.status(400).json({ error: 'Type invalide (national ou international).' });
+  }
+
+  const existing = db.prepare('SELECT id FROM localites WHERE nom = ? AND id != ?').get(nom, req.params.id);
+  if (existing) return res.status(409).json({ error: 'Une autre localite porte deja ce nom.' });
+
+  db.prepare('UPDATE localites SET nom = ?, type = ?, pays = ?, est_service = ? WHERE id = ?')
+    .run(nom, typeVal, pays || l.pays, est_service ? 1 : 0, req.params.id);
+  const updated = db.prepare('SELECT * FROM localites WHERE id = ?').get(req.params.id);
+  logAudit(db, req.user.id, req.user.username, 'MODIFIER_LOCALITE', (l.nom || '') + ' -> ' + nom);
+  res.json({ localite: updated });
+});
+
 router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const l = db.prepare('SELECT * FROM localites WHERE id = ?').get(req.params.id);

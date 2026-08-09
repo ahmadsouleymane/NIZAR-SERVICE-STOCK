@@ -238,32 +238,46 @@ var Parametres = {
             var it = g.items[j];
             html += '<tr><td><strong>' + UI.escapeHtml(it.nom) + '</strong></td>' +
               '<td>' + (it.est_service ? '—' : UI.escapeHtml(it.pays)) + '</td>' +
-              '<td><button class="btn btn-sm btn-danger btn-del-loc" data-id="' + it.id + '">Supprimer</button></td></tr>';
+              '<td class="actions"><button class="btn btn-sm btn-secondary btn-edit-loc" data-id="' + it.id + '">Modifier</button>' +
+              '<button class="btn btn-sm btn-danger btn-del-loc" data-id="' + it.id + '">Supprimer</button></td></tr>';
           }
           html += '</tbody></table></div></div>';
         });
         el.innerHTML = html;
+        el.querySelectorAll('.btn-edit-loc').forEach(function(btn) {
+          btn.addEventListener('click', function() {
+            var l = data.localites.find(function(x) { return x.id === parseInt(btn.getAttribute('data-id'), 10); });
+            if (l) self._showLocaliteForm(l);
+          });
+        });
         el.querySelectorAll('.btn-del-loc').forEach(function(btn) {
           btn.addEventListener('click', function() { self._deleteLocalite(parseInt(this.getAttribute('data-id'))); });
         });
       }).catch(function() {});
   },
 
-  _showLocaliteForm: function() {
+  _showLocaliteForm: function(existing) {
     var self = this;
-    var html = '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="loc-nom" required></div>' +
-      '<div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="form-select" id="loc-type"><option value="national">National</option><option value="international">International</option><option value="service">Service (Siege)</option></select></div>' +
-      '<div class="form-group"><label class="form-label">Pays</label><input type="text" class="form-input" id="loc-pays" value="Niger"></div></div>';
+    var isEdit = !!existing;
+    var currentType = existing ? (existing.est_service ? 'service' : existing.type) : 'national';
+    var html = '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="loc-nom" value="' + (existing ? UI.escapeHtml(existing.nom) : '') + '" required></div>' +
+      '<div class="form-row"><div class="form-group"><label class="form-label">Type</label><select class="form-select" id="loc-type">' +
+      '<option value="national"' + (currentType === 'national' ? ' selected' : '') + '>National</option>' +
+      '<option value="international"' + (currentType === 'international' ? ' selected' : '') + '>International</option>' +
+      '<option value="service"' + (currentType === 'service' ? ' selected' : '') + '>Service (Siege)</option></select></div>' +
+      '<div class="form-group"><label class="form-label">Pays</label><input type="text" class="form-input" id="loc-pays" value="' + (existing ? UI.escapeHtml(existing.pays || 'Niger') : 'Niger') + '"></div></div>';
 
-    UI.modal('Ajouter une destination', html, [
+    UI.modal(isEdit ? 'Modifier la destination' : 'Ajouter une destination', html, [
       { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-      { label: 'Ajouter', cls: 'btn-primary', callback: function(m) {
+      { label: isEdit ? 'Enregistrer' : 'Ajouter', cls: 'btn-primary', callback: function(m) {
         var nom = document.getElementById('loc-nom').value.trim();
         if (!nom) { UI.toast('Nom requis.', 'error'); return; }
         var locType = document.getElementById('loc-type').value;
         var isService = locType === 'service';
-        API.createLocalite({ nom: nom, type: isService ? 'national' : locType, pays: isService ? 'Niger' : document.getElementById('loc-pays').value.trim(), est_service: isService })
-          .then(function() { UI.toast(isService ? 'Service ajoute.' : 'Localite ajoutee.', 'success'); m.close(); self._loadLocalites(); })
+        var payload = { nom: nom, type: isService ? 'national' : locType, pays: isService ? 'Niger' : document.getElementById('loc-pays').value.trim(), est_service: isService };
+        var promise = isEdit ? API.updateLocalite(existing.id, payload) : API.createLocalite(payload);
+        promise
+          .then(function() { UI.toast(isEdit ? 'Localite modifiee.' : (isService ? 'Service ajoute.' : 'Localite ajoutee.'), 'success'); m.close(); self._loadLocalites(); })
           .catch(function(err) { UI.toast(err.message, 'error'); });
       } }
     ]);

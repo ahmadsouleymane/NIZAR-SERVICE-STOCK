@@ -373,26 +373,30 @@ router.patch('/:id/statut', authenticate, (req, res) => {
   res.json({ fiche: updated, message: 'Statut mis a jour : ' + statut });
 });
 
-// POST /api/fiches/:id/upload — photo du retour (obligatoire) : marque la fiche « retournee »
+// POST /api/fiches/:id/upload — photo du retour (obligatoire) : marque la fiche « retournee ».
+// Fiche deja « archivee » (import historique ou retour ajoute apres coup) : la
+// photo est simplement attachee, le statut reste « archivee » (pas de retour en arriere).
 router.post('/:id/upload', authenticate, upload, verifyUpload, (req, res) => {
   const db = req.db;
   const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
   if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
   if (!req.file) return res.status(400).json({ error: 'Photo du retour requise.' });
-  if (fiche.statut === 'archivee') return res.status(400).json({ error: 'Fiche déjà archivée.' });
 
   const scanPath = '/uploads/' + req.file.filename;
-  // La photo remplace la signature : la fiche passe en « retournee ».
+  const nouveauStatut = fiche.statut === 'archivee' ? 'archivee' : 'retournee';
   // Le PDF original (fichier_path) reste intact et re-imprimable a volonte.
-  db.prepare('UPDATE fiches_reception SET scan_path = ?, statut = \'retournee\', updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
-    .run(scanPath, req.params.id);
+  db.prepare('UPDATE fiches_reception SET scan_path = ?, statut = ?, updated_at = datetime(\'now\',\'localtime\') WHERE id = ?')
+    .run(scanPath, nouveauStatut, req.params.id);
   logAudit(db, req.user.id, req.user.username, 'SCAN_FICHE', 'Photo du retour enregistree pour ' + (fiche.reference || req.params.id));
 
   const updated = db.prepare(`
     SELECT fr.*, l.nom as localite_nom FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
   `).get(req.params.id);
 
-  res.json({ fiche: updated, message: 'Retour enregistré (photo). La fiche est passée en « retournée ».' });
+  res.json({
+    fiche: updated,
+    message: nouveauStatut === 'archivee' ? 'Photo du retour ajoutee.' : 'Retour enregistré (photo). La fiche est passée en « retournée ».'
+  });
 });
 
 // DELETE /api/fiches/:id (admin seulement)

@@ -103,7 +103,7 @@ var Fiches = {
 
       var scanCell = f.scan_path
         ? '<span class="badge badge-success">Photo</span>'
-        : (f.statut === 'envoyee' ? '<span class="badge badge-warning">En attente</span>' : '<span class="text-muted">—</span>');
+        : (f.statut === 'envoyee' ? '<span class="badge badge-warning">En attente</span>' : '<span class="badge badge-neutral">Manquante</span>');
 
       html += '<tr><td><strong style="font-family:var(--font-heading);font-size:0.8rem">' + UI.escapeHtml(f.reference) + '</strong>' +
         (f.numero_facture ? '<div class="text-sm text-muted">' + UI.escapeHtml(f.numero_facture) + '</div>' : '') + '</td>' +
@@ -120,6 +120,9 @@ var Fiches = {
 
       if (f.statut === 'envoyee') {
         html += '<button class="btn btn-sm btn-success btn-upload-scan" data-id="' + f.id + '">Scanner (retour)</button>';
+      }
+      if (f.statut === 'archivee' && !f.scan_path) {
+        html += '<button class="btn btn-sm btn-success btn-upload-scan" data-id="' + f.id + '">Ajouter photo</button>';
       }
       if (f.statut === 'retournee') {
         html += '<button class="btn btn-sm btn-primary btn-archive-fiche" data-id="' + f.id + '">Archiver</button>';
@@ -403,6 +406,9 @@ var Fiches = {
       if (f.statut === 'envoyee') {
         actions.unshift({ label: 'Scanner (retour)', cls: 'btn-success', callback: function(m) { m.close(); self._uploadScan(id); } });
       }
+      if (f.statut === 'archivee' && !f.scan_path) {
+        actions.unshift({ label: 'Ajouter photo', cls: 'btn-success', callback: function(m) { m.close(); self._uploadScan(id); } });
+      }
       if (f.statut === 'retournee') {
         actions.unshift({ label: 'Archiver', cls: 'btn-primary', callback: function(m) { m.close(); self._archiveFiche(id); } });
       }
@@ -459,7 +465,7 @@ var Fiches = {
       UI.toast('Upload de la photo...', 'info');
       API.uploadScanFiche(id, file).then(function(data) {
         if (data.error) { UI.toast(data.error, 'error'); return; }
-        UI.toast('Retour enregistré (photo) — fiche passée en « retournée ».', 'success');
+        UI.toast(data.message || 'Photo enregistree.', 'success');
         self._load();
       }).catch(function(err) { UI.toast(err.message, 'error'); });
     });

@@ -329,6 +329,13 @@ const API = {
     });
   },
 
+  async updateLocalite(id, data) {
+    return this.fetch('/api/localites/' + id, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
   async deleteLocalite(id) {
     return this.fetch('/api/localites/' + id, {
       method: 'DELETE'
