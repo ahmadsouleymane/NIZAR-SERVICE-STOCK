@@ -124,11 +124,24 @@ function countArticles(db) {
   try { return db.prepare('SELECT COUNT(*) c FROM articles').get().c || 0; } catch (e) { return -1; }
 }
 
+// Compte quelques totaux-cles pour comparer « richesse » de deux bases (voir
+// garde-fou anti split-brain dans save()). Tolerant aux tables absentes (ancien
+// schema) : renvoie 0 pour ce qui n'existe pas plutot que d'echouer.
+function summarize(db) {
+  const c = (sql) => { try { return db.prepare(sql).get().c || 0; } catch (e) { return 0; } };
+  return {
+    articles: c('SELECT COUNT(*) c FROM articles'),
+    categories: c('SELECT COUNT(*) c FROM categories'),
+    fiches: c('SELECT COUNT(*) c FROM fiches_reception'),
+    mouvements: c('SELECT COUNT(*) c FROM mouvements')
+  };
+}
+
 // === Sauvegarde ===
 // Snapshot cohérent via VACUUM INTO (sans corrompre la base vivante), puis PUT GitHub.
 async function save(db, reason) {
   if (!enabled()) return;
-  // GARDE-FOU : ne jamais écraser une sauvegarde réelle par une base vide (seed).
+  // GARDE-FOU 1 : ne jamais écraser une sauvegarde réelle par une base vide (seed).
   // Un serveur qui démarre sans restauration réussie aurait 0 article et écraserait
   // sinon les vraies données à chaque sauvegarde périodique.
   const n = countArticles(db);
@@ -138,9 +151,43 @@ async function save(db, reason) {
   }
   const tmp = DB_FILE + '.backup.tmp';
   try {
+    // GARDE-FOU 2 : anti « split-brain ». Si deux instances tournent en parallele
+    // (ex. redeploiement en cours, ou script local avec les memes identifiants),
+    // chacune sauvegarde la sienne toutes les ~3 min et peut ecraser les vraies
+    // donnees de l'autre. On compare a la sauvegarde distante actuelle : si la
+    // base locale a moins de categories OU moins de fiches que ce qui est deja
+    // sauvegarde, on n'ecrase pas (on log un avertissement a la place).
+    const existing = await githubGet(REMOTE_PATH);
+    if (existing) {
+      let existingDb = null;
+      try {
+        let base64 = existing.content;
+        if (!base64) { const blob = await githubGetBlob(existing.sha); base64 = blob.content; }
+        if (base64) {
+          const tmpCheck = DB_FILE + '.check.tmp';
+          fs.writeFileSync(tmpCheck, Buffer.from(base64, 'base64'));
+          const Database = require('better-sqlite3');
+          existingDb = new Database(tmpCheck, { readonly: true });
+          const remote = summarize(existingDb);
+          const local = summarize(db);
+          existingDb.close();
+          fs.unlinkSync(tmpCheck);
+          // Uniquement les fiches/mouvements : un compte de categories plus bas est
+          // souvent une vraie action admin (fusion/suppression), pas une perte de
+          // donnees — contrairement a un nombre de fiches qui ne devrait jamais
+          // baisser tout seul.
+          if (local.fiches < remote.fiches || local.mouvements < remote.mouvements) {
+            console.warn('[backup] Base locale moins riche que la sauvegarde distante (fiches ' +
+              local.fiches + '<' + remote.fiches + ' ou mouvements ' + local.mouvements + '<' + remote.mouvements +
+              ') — sauvegarde ignoree pour eviter d\'ecraser des donnees plus recentes.');
+            return;
+          }
+        }
+      } catch (e) { /* comparaison impossible : on procede quand meme a la sauvegarde */ }
+    }
+
     db.exec("VACUUM INTO '" + tmp.replace(/'/g, "''") + "'");
     const content = fs.readFileSync(tmp, 'base64');
-    const existing = await githubGet(REMOTE_PATH);
     await githubPut(REMOTE_PATH, content, existing ? existing.sha : undefined,
       'backup ' + (reason || 'periodique') + ' — ' + new Date().toISOString());
     console.log('[backup] Base sauvegardée sur GitHub (' + repoPath() + ') — ' + (reason || 'periodique') + '.');

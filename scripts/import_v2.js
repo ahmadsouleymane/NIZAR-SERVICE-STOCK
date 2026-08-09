@@ -158,6 +158,26 @@ for (const rows of [f2, f3]) {
 
 const db = initDB();
 
+// GARDE-FOU : ce script VIDE articles/mouvements/fiches/entrees pour repartir de
+// zero depuis l'Excel — adapte pour l'import historique initial UNIQUEMENT.
+// Le relancer sur une base deja utilisee en production ecraserait les sorties/
+// entrees creees depuis l'app ET les personnalisations admin (prix, unites,
+// categories des articles, editees a la main et non presentes dans l'Excel).
+// Protection : refuse de continuer si la base contient deja des fiches, sauf
+// avec --force explicite (usage : node scripts/import_v2.js <fichier> --force).
+const dejaUtilisee = db.prepare('SELECT COUNT(*) c FROM fiches_reception').get().c > 0;
+const force = process.argv.includes('--force');
+if (dejaUtilisee && !force) {
+  console.error(
+    'ERREUR : la base contient deja des fiches de sortie (donnees en production).\n' +
+    'Relancer cet import effacerait ces sorties ET toute personnalisation admin\n' +
+    '(prix, unites, categories assignees a la main sur les articles).\n' +
+    'Si c\'est vraiment voulu, relancez avec --force.'
+  );
+  db.close();
+  process.exit(1);
+}
+
 const result = { articles: 0, mouvements: 0, series: 0, localites: 0 };
 
 db.transaction(() => {
