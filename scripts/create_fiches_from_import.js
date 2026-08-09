@@ -22,14 +22,19 @@ const groups = db.prepare(`
 
 console.log('Groupes a traiter :', groups.length);
 
-// Reference chronologique BR-NUM-ANNEEMOIS (meme format que les fiches creees en direct)
+// Reference chronologique BR-NUM-ANNEEMOIS (meme format que les fiches creees en direct).
+// Repart apres le plus grand numero deja utilise ce mois-la (la base peut deja
+// contenir des fiches reelles ou d'un import precedent pour ce mois).
 const counters = {};
 function makeRef(dateStr) {
   const d = new Date(dateStr);
   const y = d.getFullYear().toString().slice(-2);
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const key = y + m;
-  if (!counters[key]) counters[key] = 0;
+  if (!counters[key]) {
+    const row = db.prepare("SELECT reference FROM fiches_reception WHERE reference LIKE 'BR-%-' || ? ORDER BY reference DESC LIMIT 1").get(key);
+    counters[key] = row ? parseInt(row.reference.split('-')[1], 10) : 0;
+  }
   counters[key]++;
   return 'BR-' + String(counters[key]).padStart(3, '0') + '-' + key;
 }

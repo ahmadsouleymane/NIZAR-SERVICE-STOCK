@@ -144,12 +144,21 @@ router.put('/:id', authenticate, (req, res) => {
   logAudit(db, req.user.id, req.user.username, 'MODIF_ARTICLE', updated.reference + ' — ' + updated.nom);
 });
 
-// DELETE /api/articles/:id (admin only)
+// DELETE /api/articles/:id (admin only) — suppression forcee : l'admin peut
+// supprimer un article meme s'il a de l'historique (doublon cree par erreur,
+// article obsolete...). On supprime d'abord les lignes liees dans les tables
+// sans ON DELETE CASCADE, pour eviter l'erreur de contrainte FK.
 router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
-  db.prepare('DELETE FROM articles WHERE id = ?').run(req.params.id);
+  const tx = db.transaction(() => {
+    for (const table of ['fiche_reception_articles', 'retours_carnets', 'fiche_entree_articles', 'fiche_besoin_articles']) {
+      db.prepare(`DELETE FROM ${table} WHERE article_id = ?`).run(req.params.id);
+    }
+    db.prepare('DELETE FROM articles WHERE id = ?').run(req.params.id);
+  });
+  tx();
   logAudit(db, req.user.id, req.user.username, 'SUPPR_ARTICLE', article.reference + ' — ' + article.nom);
   res.json({ message: 'Article supprime.' });
 });
