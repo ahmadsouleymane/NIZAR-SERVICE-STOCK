@@ -46,7 +46,10 @@ const API = {
           ...options
         });
 
-        if (res.status === 401) {
+        // Un 401 sur /api/auth/login est un identifiant/mot de passe incorrect,
+        // pas une session expirée (il n'y a pas encore de session) : laisser
+        // passer pour que le vrai message d'erreur (JSON) s'affiche normalement.
+        if (res.status === 401 && !url.includes('/api/auth/login')) {
           stopWait();
           this.clearToken();
           window.location.hash = '#login';

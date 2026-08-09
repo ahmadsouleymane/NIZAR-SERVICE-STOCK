@@ -39,6 +39,23 @@ async function githubGet(filePath) {
   return res.json();
 }
 
+// L'API Contents n'inclut le contenu en base64 QUE pour les fichiers < ~1 Mo :
+// au-delà, `content` est vide meme si `size` est correct. Pour les gros fichiers
+// (notre base grossit avec l'historique), on recupere le blob via l'API Git Data,
+// qui supporte jusqu'a 100 Mo.
+async function githubGetBlob(sha) {
+  const res = await fetch(GITHUB_API + '/repos/' + REPO + '/git/blobs/' + sha, {
+    headers: {
+      Authorization: 'Bearer ' + TOKEN,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28'
+    },
+    signal: AbortSignal.timeout(30000)
+  });
+  if (!res.ok) throw new Error('GitHub GET blob ' + res.status + ' (' + sha + ')');
+  return res.json();
+}
+
 async function githubPut(filePath, base64Content, sha, message) {
   const body = { message: message, content: base64Content };
   if (sha) body.sha = sha;
@@ -86,9 +103,20 @@ async function restore() {
     console.log('[backup] Aucune sauvegarde GitHub (' + repoPath() + ') — base vierge au départ.');
     return false;
   }
+  // Fichier > ~1 Mo : l'API Contents ne renvoie pas `content`, il faut passer
+  // par l'API Git Data (blobs) pour recuperer les octets reels.
+  let base64Content = meta.content;
+  if (!base64Content) {
+    const blob = await githubGetBlob(meta.sha);
+    base64Content = blob.content;
+  }
+  if (!base64Content) throw new Error('Contenu de la sauvegarde introuvable (fichier vide cote GitHub ?).');
+
   fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
-  fs.writeFileSync(DB_FILE, Buffer.from(meta.content, 'base64'));
-  console.log('[backup] Base restaurée depuis GitHub (' + meta.size + ' octets).');
+  fs.writeFileSync(DB_FILE, Buffer.from(base64Content, 'base64'));
+  const written = fs.statSync(DB_FILE).size;
+  if (written === 0) throw new Error('Fichier restauré vide (0 octet) — restauration annulée.');
+  console.log('[backup] Base restaurée depuis GitHub (' + written + ' octets).');
   return true;
 }
 
