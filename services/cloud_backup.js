@@ -16,8 +16,22 @@ const INTERVAL_MS = (parseInt(process.env.GH_BACKUP_INTERVAL_MIN, 10) || 3) * 60
 
 const GITHUB_API = process.env.GH_BACKUP_API || 'https://api.github.com';
 
-function enabled() {
+// PROTECTION ANTI-ECRASEMENT (incident 2026-08-09) : les sauvegardes ET la
+// restauration AUTOMATIQUES ne tournent qu'en production (ou si BACKUP_ENABLE=1
+// est explicitement fourni). Un serveur lance en local charge le .env de prod
+// (memes identifiants GitHub) ; sans ce garde-fou, ses ecritures poussaient la
+// base locale par-dessus la vraie sauvegarde de prod. La poussee manuelle
+// deliberee (pushInitial / scripts/push_initial_backup.js) reste possible, elle.
+const AUTO_OK = process.env.NODE_ENV === 'production' || process.env.BACKUP_ENABLE === '1';
+
+// Identifiants presents (depot + token) — condition de base, sans le garde-fou prod.
+function hasCreds() {
   return !!(REPO && TOKEN);
+}
+
+// Sauvegardes/restauration automatiques autorisees : identifiants ET mode prod.
+function enabled() {
+  return hasCreds() && AUTO_OK;
 }
 
 function repoPath() {
@@ -124,6 +138,30 @@ function countArticles(db) {
   try { return db.prepare('SELECT COUNT(*) c FROM articles').get().c || 0; } catch (e) { return -1; }
 }
 
+// === Identite de lignee (anti-ecrasement par une base d'une autre origine) ===
+// On tatoue chaque base d'un identifiant stable stocke dans PRAGMA user_version
+// (non utilise ailleurs par le schema). Deux bases de lignees differentes (ex.
+// prod vs une copie locale) ont des identifiants differents : save() refuse alors
+// d'ecraser une sauvegarde distante tatouee d'un AUTRE identifiant. C'est ce qui
+// aurait bloque l'incident du 2026-08-09 (une base locale ecrasant celle de prod
+// avec les MEMES compteurs de fiches/mouvements, donc invisible au garde-fou 2).
+function ensureIdentity(db) {
+  try {
+    let v = db.pragma('user_version', { simple: true });
+    if (!v || v === 0) {
+      v = Math.floor(Math.random() * 2147483646) + 1;
+      db.pragma('user_version = ' + v);
+    }
+    return v;
+  } catch (e) { return null; }
+}
+function readIdentity(db) {
+  try {
+    const v = db.pragma('user_version', { simple: true });
+    return (v && v !== 0) ? v : null;
+  } catch (e) { return null; }
+}
+
 // Compte quelques totaux-cles pour comparer « richesse » de deux bases (voir
 // garde-fou anti split-brain dans save()). Tolerant aux tables absentes (ancien
 // schema) : renvoie 0 pour ce qui n'existe pas plutot que d'echouer.
@@ -149,6 +187,8 @@ async function save(db, reason) {
     console.log('[backup] Base locale sans articles — sauvegarde ignorée (préserve la sauvegarde réelle).');
     return;
   }
+  // Tatoue la base locale (une seule fois) pour la detection de lignee ci-dessous.
+  const localId = ensureIdentity(db);
   // Nom unique : VACUUM INTO refuse d'ecrire si le fichier cible existe deja.
   // Un nom fixe reutilise entre appels bloquerait TOUTE sauvegarde future des
   // qu'un appel precedent est interrompu (crash, SIGKILL) sans nettoyer son tmp.
@@ -174,8 +214,18 @@ async function save(db, reason) {
           existingDb = new Database(tmpCheck, { readonly: true });
           const remote = summarize(existingDb);
           const local = summarize(db);
+          const remoteId = readIdentity(existingDb);
           existingDb.close();
           fs.unlinkSync(tmpCheck);
+          // GARDE-FOU 3 : lignee differente. La sauvegarde distante porte un
+          // identifiant d'une AUTRE base que la notre → on refuse de l'ecraser
+          // (base d'une autre origine ; cas de l'incident 2026-08-09). Ne bloque
+          // pas si le distant n'a pas encore d'identifiant (ancienne sauvegarde).
+          if (remoteId && localId && remoteId !== localId) {
+            console.warn('[backup] Lignée différente (locale ' + localId + ' vs sauvegarde ' + remoteId +
+              ') — sauvegarde REFUSÉE : base d\'une autre origine. Investiguer avant de forcer.');
+            return;
+          }
           // Seuil DRAMATIQUE uniquement (ex: 0 fiches alors qu'il y en avait 1213,
           // le cas reel qui a cause l'incident) — pas une simple baisse de 1 ou 2,
           // qui correspond a une suppression admin legitime (le bouton Supprimer
@@ -232,7 +282,9 @@ function flushPendingSave() {
 
 // === Poussée initiale (une seule fois, depuis une machine locale) ===
 async function pushInitial() {
-  if (!enabled()) throw new Error('GH_BACKUP_REPO / GH_BACKUP_TOKEN manquants.');
+  // Operation manuelle deliberee : ne depend PAS du garde-fou prod (on la lance
+  // volontairement depuis un poste local), seulement des identifiants.
+  if (!hasCreds()) throw new Error('GH_BACKUP_REPO / GH_BACKUP_TOKEN manquants.');
   if (!fs.existsSync(DB_FILE)) throw new Error('Base locale introuvable : ' + DB_FILE);
   const Database = require('better-sqlite3');
   const db = new Database(DB_FILE, { readonly: true });
@@ -255,8 +307,12 @@ async function pushInitial() {
 // La restauration est faite par server.js AVANT initDB (voir serveur) — ici on
 // gère uniquement les sauvegardes périodiques et à l'arrêt.
 function start(db) {
-  if (!enabled()) {
+  if (!hasCreds()) {
     console.log('[backup] GH_BACKUP_REPO non défini — synchro GitHub désactivée (mode local).');
+    return;
+  }
+  if (!AUTO_OK) {
+    console.log('[backup] NODE_ENV != production — sauvegardes cloud DÉSACTIVÉES (protection anti-écrasement de la prod). Forcer avec BACKUP_ENABLE=1 si vraiment voulu.');
     return;
   }
   // Sauvegarde périodique

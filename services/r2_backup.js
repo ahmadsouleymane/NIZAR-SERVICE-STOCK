@@ -14,8 +14,17 @@ const R2_SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY;
 const R2_BUCKET = process.env.R2_BUCKET;
 const INTERVAL_MS = (parseInt(process.env.R2_SYNC_INTERVAL_MIN, 10) || 5) * 60 * 1000;
 
-function enabled() {
+// PROTECTION ANTI-ECRASEMENT (incident 2026-08-09) : comme la sauvegarde de la
+// base, la synchro des uploads vers R2 ne tourne qu'en production (ou BACKUP_ENABLE=1).
+// Empeche un serveur local (avec le .env de prod) de polluer le bucket partage.
+const AUTO_OK = process.env.NODE_ENV === 'production' || process.env.BACKUP_ENABLE === '1';
+
+function hasCreds() {
   return !!(R2_ENDPOINT && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_BUCKET);
+}
+
+function enabled() {
+  return hasCreds() && AUTO_OK;
 }
 
 let client = null;
@@ -137,8 +146,12 @@ function scheduleSync() {
 
 // Démarrage du service (côté serveur)
 function start(uploadDir) {
-  if (!enabled()) {
+  if (!hasCreds()) {
     console.log('[r2] Variables R2_* non définies — synchro photos R2 désactivée (mode local).');
+    return;
+  }
+  if (!AUTO_OK) {
+    console.log('[r2] NODE_ENV != production — synchro photos R2 DÉSACTIVÉE (protection anti-pollution du bucket prod). Forcer avec BACKUP_ENABLE=1.');
     return;
   }
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
