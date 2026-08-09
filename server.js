@@ -31,6 +31,10 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       fontSrc: ["'self'", 'https://fonts.gstatic.com'],
       imgSrc: ["'self'", 'data:', 'blob:'],
+      // imprimer.js charge le PDF authentifie en blob: (jamais dans l'URL) et
+      // l'affiche dans un iframe pour l'impression — sans 'blob:' ici, la CSP
+      // bloque silencieusement cet iframe (page d'impression blanche/cassee).
+      frameSrc: ["'self'", 'blob:'],
       connectSrc: ["'self'"],
       objectSrc: ["'none'"],
       baseUri: ["'self'"],
