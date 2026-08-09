@@ -77,6 +77,7 @@ app.use('/api/trends', require('./routes/trends'));
 app.use('/api/alertes', require('./routes/alertes'));
 app.use('/api/recherche', require('./routes/recherche'));
 app.use('/api/billets', require('./routes/billets'));
+app.use('/api/unites', require('./routes/unites'));
 
 // Servir les uploads (repertoire configurable, sur le disque persistant en deploiement)
 app.use('/uploads', (req, res, next) => {

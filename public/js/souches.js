@@ -44,12 +44,13 @@ var Souches = {
   _loadFilters: function() {
     var self = this;
     API.getArticles().then(function(d) {
-      self._articles = d.articles;
+      // Seuls les articles a numero de souche (billets/carnets/bons) ont leur place ici.
+      self._articles = d.articles.filter(function(a) { return a.type_article === 'numerote'; });
       var sel = document.getElementById('filtre-souche-article');
-      for (var i = 0; i < d.articles.length; i++) {
+      for (var i = 0; i < self._articles.length; i++) {
         var opt = document.createElement('option');
-        opt.value = d.articles[i].id;
-        opt.textContent = d.articles[i].nom;
+        opt.value = self._articles[i].id;
+        opt.textContent = self._articles[i].nom;
         sel.appendChild(opt);
       }
     }).catch(function() {});

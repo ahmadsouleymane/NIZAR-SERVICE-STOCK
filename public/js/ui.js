@@ -269,23 +269,17 @@ var UI = {
     };
   },
 
-  // Prendre une photo avec la CAMERA : obligatoire sur telephone, bloque sur ordinateur.
-  // Sur mobile, ouvre une camera integree (getUserMedia) si disponible, sinon la camera
-  // native via input capture. JAMAIS la galerie ni l'explorateur de fichiers.
+  // Prendre une photo : camera du telephone si disponible, sinon (ou en alternative)
+  // upload direct depuis l'explorateur de fichiers / la galerie.
   capturePhoto: function(onChange) {
-    var self = this;
-    // Ordinateur (souris, pointeur fin) : on bloque — les photos se prennent au telephone.
     var isTouch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    if (!isTouch) {
-      UI.toast('📱 Cette photo doit être prise avec la caméra du téléphone.', 'warning');
+    // Ordinateur, ou mobile sans camera integree : explorateur de fichiers direct.
+    if (!isTouch || !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
+      this.pickFile(onChange, 'image/*', false);
       return;
     }
-    // Sur contexte securise (localhost/HTTPS) : camera integree. Sinon : camera native.
-    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-      this._openCameraModal(onChange);
-    } else {
-      this.pickFile(onChange, 'image/*', true);
-    }
+    // Mobile avec camera dispo : camera par defaut, avec un choix « fichier » en repli.
+    this._openCameraModal(onChange);
   },
 
   _openCameraModal: function(onChange) {
@@ -303,6 +297,7 @@ var UI = {
       '<p class="camera-hint">Cadrez le document puis prenez la photo.</p>' +
       '<div class="camera-actions">' +
       '<button class="btn btn-secondary" id="camera-cancel">Annuler</button>' +
+      '<button class="btn btn-secondary" id="camera-file">📁 Choisir un fichier</button>' +
       '<button class="btn btn-primary" id="camera-shoot">Prendre la photo</button>' +
       '</div></div>';
     document.body.appendChild(overlay);
@@ -333,6 +328,10 @@ var UI = {
 
     overlay.querySelector('#camera-cancel').addEventListener('click', cleanup);
     overlay.querySelector('#camera-x').addEventListener('click', cleanup);
+    overlay.querySelector('#camera-file').addEventListener('click', function() {
+      cleanup();
+      self.pickFile(onChange, 'image/*', false);
+    });
     overlay.addEventListener('click', function(e) { if (e.target === overlay) cleanup(); });
     overlay.querySelector('#camera-shoot').addEventListener('click', function() {
       try {
@@ -390,6 +389,12 @@ var UI = {
       if (onChange) onChange(this.files && this.files[0]);
     });
     input.click();
+  },
+
+  // Role de l'utilisateur connecte : seul l'admin peut modifier/supprimer une operation.
+  isAdmin: function() {
+    try { return JSON.parse(localStorage.getItem('nizar_user') || '{}').role === 'admin'; }
+    catch (e) { return false; }
   },
 
   // Helpers

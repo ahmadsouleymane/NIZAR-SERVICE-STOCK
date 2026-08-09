@@ -101,7 +101,8 @@ var Entrees = {
       } else if (f.statut !== 'archivee') {
         html += '<button class="btn btn-sm btn-success btn-photo-entree" data-id="' + f.id + '">Photo BL/Facture</button>';
       }
-      html += '<button class="btn btn-sm btn-danger btn-del-entree" data-id="' + f.id + '">Suppr.</button>' +
+      if (UI.isAdmin()) html += '<button class="btn btn-sm btn-danger btn-del-entree" data-id="' + f.id + '">Suppr.</button>';
+      html +=
         '</td></tr>';
     }
     html += '</tbody></table></div>';

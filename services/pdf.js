@@ -133,6 +133,8 @@ function generateFichePDF(fiche, lignes) {
           });
         }
 
+        drawFooter(page, font, height);
+
         // === Enregistrement ===
         const pdfBytes = await pdfDoc.save();
         const filename = 'fiche-' + fiche.reference.replace(/[^a-zA-Z0-9]/g, '-') + '-' + Date.now() + '.pdf';
@@ -256,6 +258,8 @@ function generateBonLivraisonPDF(fiche, lignes) {
         }
 
         // Signatures « GESTIONNAIRE DE STOCK » / « FOURNISSEUR » deja imprimees sur le modele
+
+        drawFooter(page, font, height);
 
         // === Enregistrement ===
         const pdfBytes = await pdfDoc.save();
@@ -401,6 +405,17 @@ function generateStockPDF(articles, res) {
 
 function formatFCFA(n) {
   return Number(n || 0).toLocaleString('fr-FR');
+}
+
+// Mention en bas de page, sur tous les documents generes depuis un modele pdf-lib.
+function drawFooter(page, font, pageHeight) {
+  const text = 'Document émis par le Service Stock — Nizar Transport Voyageurs';
+  const size = 7.5;
+  const grey = rgb(0.55, 0.55, 0.55);
+  const width = font.widthOfTextAtSize(text, size);
+  page.drawText(text, {
+    x: (PAGE_W - width) / 2, y: pageHeight - 800, size, font, color: grey
+  });
 }
 
 // Reduit la taille de police jusqu'a ce que le texte tienne dans maxWidth

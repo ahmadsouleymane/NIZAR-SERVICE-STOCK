@@ -119,11 +119,12 @@ var Articles = {
     var isEdit = !!id;
     var title = isEdit ? 'Modifier l\'article' : 'Ajouter un article';
 
-    // Load categories and fournisseurs for selects
-    Promise.all([API.getCategories(), API.getFournisseurs()])
+    // Load categories, fournisseurs et unites pour les selects
+    Promise.all([API.getCategories(), API.getFournisseurs(), API.getUnites()])
       .then(function(results) {
         var categories = results[0].categories;
         var fournisseurs = results[1].fournisseurs;
+        var unites = results[2].unites;
 
         var catOptions = '<option value="">Aucune</option>';
         for (var i = 0; i < categories.length; i++) {
@@ -133,13 +134,17 @@ var Articles = {
         for (var j = 0; j < fournisseurs.length; j++) {
           fournOptions += '<option value="' + fournisseurs[j].id + '">' + UI.escapeHtml(fournisseurs[j].nom) + '</option>';
         }
+        var uniteOptions = '';
+        for (var k = 0; k < unites.length; k++) {
+          uniteOptions += '<option value="' + UI.escapeHtml(unites[k].code) + '">' + UI.escapeHtml(unites[k].label) + '</option>';
+        }
 
         var formHtml =
           '<div class="form-group"><label class="form-label">Reference *</label><input type="text" class="form-input" id="art-ref" required></div>' +
           '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="art-nom" required></div>' +
           '<div class="form-row">' +
           '<div class="form-group"><label class="form-label">Categorie</label><select class="form-select" id="art-cat">' + catOptions + '</select></div>' +
-          '<div class="form-group"><label class="form-label">Unite</label><select class="form-select" id="art-unite"><option value="unite">Unité</option><option value="carton">Carton</option><option value="lot">Lot</option><option value="rouleau">Rouleau</option><option value="paquet">Paquet</option></select></div>' +
+          '<div class="form-group"><label class="form-label">Unite</label><select class="form-select" id="art-unite">' + uniteOptions + '</select></div>' +
           '</div>' +
           '<div class="form-row">' +
           '<div class="form-group"><label class="form-label">Stock minimum</label><input type="number" class="form-input" id="art-min" value="10" min="0"></div>' +
@@ -221,13 +226,15 @@ var Articles = {
       // Historique des mouvements
       html += '<h4 style="margin-bottom:0.5rem">Mouvements (' + mouvements.length + ')</h4>';
       if (mouvements.length) {
-        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Type</th><th>Qte</th><th>Par</th></tr></thead><tbody>';
+        html += '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Type</th><th>Qte</th><th>Destination / Origine</th><th>Par</th></tr></thead><tbody>';
         for (var i = 0; i < mouvements.length; i++) {
           var m = mouvements[i];
+          var lieu = m.type === 'entree' ? (m.fournisseur_nom || '-') : (m.localite_nom || '-');
           html += '<tr>' +
             '<td>' + UI.formatDate(m.date) + '</td>' +
             '<td><span class="badge ' + (m.type === 'entree' ? 'badge-success' : 'badge-warning') + '">' + (m.type === 'entree' ? 'Entree' : 'Sortie') + '</span></td>' +
             '<td><strong>' + m.quantite + '</strong></td>' +
+            '<td>' + UI.escapeHtml(lieu) + '</td>' +
             '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
             '</tr>';
         }

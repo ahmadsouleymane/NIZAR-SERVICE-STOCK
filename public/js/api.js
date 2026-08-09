@@ -168,6 +168,24 @@ const API = {
     });
   },
 
+  // Unites
+  async getUnites() {
+    return this.fetch('/api/unites');
+  },
+
+  async createUnite(data) {
+    return this.fetch('/api/unites', {
+      method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async deleteUnite(id) {
+    return this.fetch('/api/unites/' + id, {
+      method: 'DELETE'
+    });
+  },
+
   // Fournisseurs
   async getFournisseurs() {
     return this.fetch('/api/fournisseurs');
@@ -201,6 +219,10 @@ const API = {
   async getMouvements(params = {}) {
     const qs = new URLSearchParams(params).toString();
     return this.fetch('/api/mouvements' + (qs ? '?' + qs : ''));
+  },
+
+  async getMouvementsResume() {
+    return this.fetch('/api/mouvements/resume');
   },
 
   async createMouvement(data) {
@@ -434,19 +456,7 @@ const API = {
     return this.fetch('/api/series/recherche?numero=' + encodeURIComponent(numero));
   },
 
-  // Inventaires
-  async getInventaires(params = {}) {
-    const qs = new URLSearchParams(params).toString();
-    return this.fetch('/api/inventaires' + (qs ? '?' + qs : ''));
-  },
-
-  async createInventaire(data) {
-    return this.fetch('/api/inventaires', {
-      method: 'POST',
-      body: JSON.stringify(data)
-    });
-  },
-
+  // Inventaire (grand livre)
   async getJournal(params = {}) {
     const qs = new URLSearchParams(params).toString();
     return this.fetch('/api/inventaires/journal' + (qs ? '?' + qs : ''));

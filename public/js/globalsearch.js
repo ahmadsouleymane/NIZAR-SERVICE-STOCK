@@ -5,7 +5,7 @@ var GlobalSearch = {
   _input: null,
   _results: null,
   _selected: 0,
-  _matches: { articles: [], series: [], fiches: [] },
+  _matches: { articles: [], series: [], fiches: [], livraisons: [] },
 
   init: function() {
     if (this._init) return;
@@ -18,7 +18,7 @@ var GlobalSearch = {
     var btn = document.createElement('button');
     btn.className = 'btn btn-icon';
     btn.setAttribute('aria-label', 'Recherche rapide');
-    btn.setAttribute('title', 'Recherche rapide : article, référence ou n° de souche');
+    btn.setAttribute('title', 'Recherche rapide : article, n° de souche, bon de réception ou bon de livraison');
     btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>';
     right.insertBefore(btn, right.firstChild);
 
@@ -67,13 +67,13 @@ var GlobalSearch = {
     this._panel.style.display = 'none';
     this._input.value = '';
     this._results.innerHTML = '';
-    this._matches = { articles: [], series: [], fiches: [] };
+    this._matches = { articles: [], series: [], fiches: [], livraisons: [] };
     this._selected = 0;
   },
 
   _onSearch: function() {
     var q = this._input.value.trim();
-    if (!q) { this._results.innerHTML = ''; this._matches = { articles: [], series: [], fiches: [] }; return; }
+    if (!q) { this._results.innerHTML = ''; this._matches = { articles: [], series: [], fiches: [], livraisons: [] }; return; }
 
     var self = this;
     this._results.innerHTML = '<div style="padding:0.5rem 0.25rem;color:#6B7280;font-size:0.85rem">Recherche...</div>';
@@ -92,9 +92,10 @@ var GlobalSearch = {
     var arts = this._matches.articles || [];
     var series = this._matches.series || [];
     var fiches = this._matches.fiches || [];
+    var livraisons = this._matches.livraisons || [];
     var html = '';
 
-    if (!arts.length && !series.length && !fiches.length) {
+    if (!arts.length && !series.length && !fiches.length && !livraisons.length) {
       this._results.innerHTML = '<div style="padding:0.75rem;color:#6B7280;font-size:0.85rem;text-align:center">Aucun résultat pour « ' + UI.escapeHtml(q) + ' »</div>';
       return;
     }
@@ -120,6 +121,15 @@ var GlobalSearch = {
         html += this._itemHtml(arts.length + series.length + k, 'fiche',
           'N° ' + UI.escapeHtml(f.reference),
           UI.escapeHtml(f.localite_nom || '-') + ' <span style="color:#6B7280">' + UI.formatDate(f.date_creation) + ' · ' + statut + '</span>');
+      }
+    }
+    if (livraisons.length) {
+      html += '<div style="font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#6B7280;padding:0.25rem 0.375rem">Bons de livraison</div>';
+      for (var l = 0; l < livraisons.length; l++) {
+        var liv = livraisons[l];
+        html += this._itemHtml(arts.length + series.length + fiches.length + l, 'livraison',
+          'N° ' + UI.escapeHtml(liv.reference) + (liv.numero_bl ? ' <span style="color:#6B7280">BL ' + UI.escapeHtml(liv.numero_bl) + '</span>' : ''),
+          UI.escapeHtml(liv.fournisseur_nom || '-') + ' <span style="color:#6B7280">' + UI.formatDate(liv.date_entree) + '</span>');
       }
     }
 
@@ -162,6 +172,7 @@ var GlobalSearch = {
     var kind = items[idx].getAttribute('data-kind');
     var artsLen = (this._matches.articles || []).length;
     var seriesLen = (this._matches.series || []).length;
+    var fichesLen = (this._matches.fiches || []).length;
     var q = this._input.value.trim();
 
     if (kind === 'article') {
@@ -174,6 +185,9 @@ var GlobalSearch = {
     } else if (kind === 'fiche') {
       var fiche = this._matches.fiches[idx - artsLen - seriesLen];
       if (fiche) this._gotoFiche(fiche);
+    } else if (kind === 'livraison') {
+      var liv = this._matches.livraisons[idx - artsLen - seriesLen - fichesLen];
+      if (liv) this._gotoLivraison(liv);
     }
     this._close();
   },
@@ -209,6 +223,16 @@ var GlobalSearch = {
     setTimeout(function() {
       if (typeof Fiches !== 'undefined' && Fiches._viewFiche) {
         try { Fiches._viewFiche(fiche.id); } catch (e) { /* le détail reste accessible via la liste */ }
+      }
+    }, 300);
+  },
+
+  // Ouvre la page « Entrées » et affiche le détail du bon de livraison trouvé
+  _gotoLivraison: function(liv) {
+    window.location.hash = 'entrees';
+    setTimeout(function() {
+      if (typeof Entrees !== 'undefined' && Entrees._viewEntree) {
+        try { Entrees._viewEntree(liv.id); } catch (e) { /* le détail reste accessible via la liste */ }
       }
     }, 300);
   }

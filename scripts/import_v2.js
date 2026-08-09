@@ -22,11 +22,26 @@ const EXCEL = process.argv[2] || '/Users/macbookair/Desktop/Carnets et fournitur
 
 // ---------- Helpers ----------
 
+// Variantes connues du fichier source qui designent le meme article (au-dela
+// de la simple casse, deja geree ci-dessous) : on les fusionne explicitement
+// plutot que de deviner une regle generale singulier/pluriel (risque de fusionner
+// a tort des articles reellement distincts).
+const ALIASES = {
+  'Enveloppes A4': 'Enveloppe A4'
+};
+
 function norm(s) {
-  return String(s || '')
-    .trim()
-    .replace(/\s+/g, ' ')
-    .replace(/^./, (c) => c.toUpperCase());
+  let n = String(s || '').trim().replace(/\s+/g, ' ');
+  if (n && n === n.toUpperCase() && n !== n.toLowerCase()) {
+    // Chaine entierement en MAJUSCULES dans le fichier source (ex: "SERVICE ACHAT",
+    // "NIAMEY") : on capitalise chaque mot pour matcher la forme deja utilisee
+    // ailleurs ("Service Achat"), plutot que de creer un doublon (bug observe :
+    // "NIAMEY" et "Niamey" importes comme deux localites distinctes).
+    n = n.toLowerCase().replace(/(^|\s)([a-zà-öø-ÿ])/g, (m, sep, c) => sep + c.toUpperCase());
+  } else {
+    n = n.replace(/^./, (c) => c.toUpperCase());
+  }
+  return ALIASES[n] || n;
 }
 
 function excelDate(v) {
@@ -91,8 +106,13 @@ function categoryIdFor(name, db) {
 
 const wb = XLSX.readFile(EXCEL);
 const f1 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil1'], { header: 1 });
-const f2 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil2'], { header: 1 });
-const f3 = XLSX.utils.sheet_to_json(wb.Sheets['Feuil3'], { header: 1 });
+// Feuil2/Feuil3 (carnets numerotes) sont optionnelles : absentes du fichier
+// courant a une seule feuille, presentes dans l'ancien classeur multi-feuilles.
+const f2 = wb.Sheets['Feuil2'] ? XLSX.utils.sheet_to_json(wb.Sheets['Feuil2'], { header: 1 }) : [];
+const f3 = wb.Sheets['Feuil3'] ? XLSX.utils.sheet_to_json(wb.Sheets['Feuil3'], { header: 1 }) : [];
+if (!f2.length && !f3.length) {
+  console.log('(Feuil2/Feuil3 absentes du fichier — carnets numerotes issus uniquement de Feuil1)');
+}
 
 // Dernière date réelle du fichier — utilisée comme repli pour les lignes sans date
 // (plutot que la date du jour, pour ne pas creer de faux mouvements « d'aujourd'hui »)

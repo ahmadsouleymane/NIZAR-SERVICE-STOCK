@@ -7,7 +7,8 @@ var Billets = {
       '<h3 class="card-title">Billets en circulation</h3>' +
       '<button class="btn btn-secondary btn-sm" id="btn-billets-refresh">Actualiser</button>' +
       '</div>' +
-      '<p class="text-sm text-muted mb-md">Par article numéroté : billets émis, envoyés aux agences, retournés (usage ou remis en stock), et encore au siège. <strong>Clic sur une ligne pour plus de details.</strong></p>' +
+      '<p class="text-sm text-muted mb-md">Par article numéroté (billets, carnets, bons) : émis, envoyés aux agences, retournés (usage ou remis en stock), et encore au siège. <strong>Clic sur une ligne pour plus de details.</strong></p>' +
+      '<div id="billets-summary" class="mb-md"></div>' +
       '<div id="billets-table">' + UI.renderSkeleton(6) + '</div>' +
       '<div class="card mt-md"><div class="card-header"><h3 class="card-title">Vue par localité — Qui a reçu quoi ?</h3></div>' +
       '<div id="billets-localite">' + UI.renderSkeleton(4) + '</div></div>' +
@@ -21,6 +22,7 @@ var Billets = {
     var self = this;
     API.getBillets()
       .then(function(data) {
+        self._renderSummary(data.billets || []);
         self._renderTable(data.billets);
         if (data.parLocalite && data.parLocalite.length) self._renderParLocalite(data.parLocalite);
       })
@@ -41,6 +43,24 @@ var Billets = {
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
+  },
+
+  _renderSummary: function(billets) {
+    var el = document.getElementById('billets-summary');
+    if (!el) return;
+    var totalEmis = 0, totalEnvoye = 0, totalRetour = 0, totalCirc = 0;
+    for (var i = 0; i < billets.length; i++) {
+      totalEmis += Number(billets[i].total_emis) || 0;
+      totalEnvoye += Number(billets[i].total_envoye) || 0;
+      totalRetour += Number(billets[i].total_retour_usage) || 0;
+      totalCirc += (Number(billets[i].total_envoye) || 0) - (Number(billets[i].total_retour_usage) || 0);
+    }
+    el.innerHTML = '<div class="kpi-grid">' +
+      '<div class="kpi-card"><div class="kpi-card-header"><span>Articles suivis</span></div><div class="kpi-card-value">' + billets.length + '</div></div>' +
+      '<div class="kpi-card"><div class="kpi-card-header"><span>Total émis</span></div><div class="kpi-card-value">' + totalEmis + '</div></div>' +
+      '<div class="kpi-card"><div class="kpi-card-header"><span>Envoyés en agence</span></div><div class="kpi-card-value">' + totalEnvoye + '</div></div>' +
+      '<div class="kpi-card"><div class="kpi-card-header"><span>En circulation</span></div><div class="kpi-card-value' + (totalCirc > 0 ? ' danger' : ' success') + '">' + totalCirc + '</div></div>' +
+      '</div>';
   },
 
   _renderTable: function(billets) {

@@ -5,6 +5,29 @@ const { checkOverlap, recordSerie } = require('../services/series');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
+// GET /api/mouvements/resume — vue Inventaire simplifiee : par article,
+// total entrees / total sorties / stock reel actuel.
+router.get('/resume', authenticate, (req, res) => {
+  const db = req.db;
+  const lignes = db.prepare(`
+    SELECT a.id AS article_id, a.nom AS article_nom, a.reference, a.unite,
+           a.stock_actuel, a.stock_min,
+           COALESCE((SELECT SUM(m.quantite) FROM mouvements m WHERE m.article_id = a.id AND m.type = 'entree'), 0) AS total_entrees,
+           COALESCE((SELECT SUM(m.quantite) FROM mouvements m WHERE m.article_id = a.id AND m.type = 'sortie'), 0) AS total_sorties
+    FROM articles a
+    ORDER BY a.nom ASC
+  `).all();
+
+  const totaux = lignes.reduce((acc, l) => {
+    acc.total_entrees += l.total_entrees;
+    acc.total_sorties += l.total_sorties;
+    acc.stock_reel += l.stock_actuel;
+    return acc;
+  }, { total_entrees: 0, total_sorties: 0, stock_reel: 0 });
+
+  res.json({ lignes, totaux });
+});
+
 // GET /api/mouvements
 router.get('/', authenticate, (req, res) => {
   const db = req.db;

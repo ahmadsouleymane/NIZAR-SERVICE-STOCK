@@ -19,7 +19,7 @@ function generateRef(db) {
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const seq = db.prepare("SELECT seq FROM sqlite_sequence WHERE name = 'fiches_reception'").get();
   const next = (seq ? seq.seq : 0) + 1;
-  return 'FR-' + y + m + '-' + String(next).padStart(3, '0');
+  return 'BR-' + String(next).padStart(3, '0') + '-' + y + m;
 }
 
 // GET /api/fiches — liste

@@ -27,6 +27,14 @@ function initDB(dbPath) {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
+    -- Unites de mesure des articles (extensible par l'admin, persiste en base)
+    CREATE TABLE IF NOT EXISTS unites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT UNIQUE NOT NULL,
+      label TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
     -- Destinations / gares / agences
     CREATE TABLE IF NOT EXISTS localites (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -331,6 +339,17 @@ function initDB(dbPath) {
     const cats = ['Documents de transport', 'Fournitures de bureau', 'Imprimes administratifs', 'Emballage', 'Autre'];
     const insert = db.prepare('INSERT INTO categories (name, description) VALUES (?, ?)');
     for (const c of cats) { insert.run(c, 'Categorie : ' + c); }
+  }
+
+  const uniteCount = db.prepare('SELECT COUNT(*) as count FROM unites').get();
+  if (uniteCount.count === 0) {
+    const unites = [
+      { code: 'unite', label: 'Unité' }, { code: 'carton', label: 'Carton' },
+      { code: 'lot', label: 'Lot' }, { code: 'rouleau', label: 'Rouleau' },
+      { code: 'paquet', label: 'Paquet' }
+    ];
+    const insertUnite = db.prepare('INSERT INTO unites (code, label) VALUES (?, ?)');
+    for (const u of unites) { insertUnite.run(u.code, u.label); }
   }
 
   const locCount = db.prepare('SELECT COUNT(*) as count FROM localites').get();

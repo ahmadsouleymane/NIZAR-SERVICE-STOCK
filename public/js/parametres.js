@@ -12,6 +12,11 @@ var Parametres = {
       '<div class="flex-between mb-md gap-sm"><input type="text" class="form-input" id="new-cat-name" placeholder="Nouvelle categorie..." style="max-width:300px"><button class="btn btn-primary btn-sm" id="btn-add-cat">Ajouter</button></div>' +
       '<div id="categories-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
+      // Unites (admin only)
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Unités</h3></div>' +
+      '<div class="flex-between mb-md gap-sm"><input type="text" class="form-input" id="new-unite-label" placeholder="Nouvelle unité (ex: Kg)..." style="max-width:300px"><button class="btn btn-primary btn-sm" id="btn-add-unite">Ajouter</button></div>' +
+      '<div id="unites-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
+
       // Localites (admin only)
       (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Localités / Agences / Services</h3>' +
       '<button class="btn btn-primary btn-sm" id="btn-add-loc">Ajouter une localite</button></div>' +
@@ -54,6 +59,7 @@ var Parametres = {
 
     if (isAdmin) {
       this._loadCategories();
+      this._loadUnites();
       this._loadLocalites();
       this._loadUsers();
       this._loadAuditLog();
@@ -68,6 +74,7 @@ var Parametres = {
 
     if (isAdmin) {
       document.getElementById('btn-add-cat').addEventListener('click', function() { self._addCategory(); });
+      document.getElementById('btn-add-unite').addEventListener('click', function() { self._addUnite(); });
       document.getElementById('btn-add-loc').addEventListener('click', function() { self._showLocaliteForm(); });
       document.getElementById('btn-add-user').addEventListener('click', function() { self._showUserForm(); });
       document.getElementById('btn-import').addEventListener('click', function() { self._importExcel(); });
@@ -163,6 +170,43 @@ var Parametres = {
         API.deleteCategory(id).then(function() { UI.toast('Supprimee.', 'success'); self._loadCategories(); }).catch(function(err) { UI.toast(err.message, 'error'); }); });
   },
 
+  // === Unites ===
+  _loadUnites: function() {
+    var self = this;
+    API.getUnites()
+      .then(function(data) {
+        var el = document.getElementById('unites-list');
+        if (!data.unites.length) { el.innerHTML = '<p class="text-muted text-center">Aucune unite.</p>'; return; }
+        var html = '<div class="table-wrapper"><table><thead><tr><th>Libellé</th><th>Code</th><th>Actions</th></tr></thead><tbody>';
+        for (var i = 0; i < data.unites.length; i++) {
+          var u = data.unites[i];
+          html += '<tr><td><strong>' + UI.escapeHtml(u.label) + '</strong></td><td class="text-sm text-muted">' + UI.escapeHtml(u.code) + '</td>' +
+            '<td><button class="btn btn-sm btn-danger btn-del-unite" data-id="' + u.id + '">Supprimer</button></td></tr>';
+        }
+        html += '</tbody></table></div>';
+        el.innerHTML = html;
+        el.querySelectorAll('.btn-del-unite').forEach(function(btn) {
+          btn.addEventListener('click', function() { self._deleteUnite(parseInt(this.getAttribute('data-id'))); });
+        });
+      }).catch(function() {});
+  },
+
+  _addUnite: function() {
+    var self = this;
+    var label = document.getElementById('new-unite-label').value.trim();
+    if (!label) { UI.toast('Nom requis.', 'error'); return; }
+    API.createUnite({ label: label })
+      .then(function() { UI.toast('Unite ajoutee.', 'success'); document.getElementById('new-unite-label').value = ''; self._loadUnites(); })
+      .catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  _deleteUnite: function(id) {
+    var self = this;
+    UI.confirm('Supprimer cette unite ?')
+      .then(function(ok) { if (!ok) return;
+        API.deleteUnite(id).then(function() { UI.toast('Supprimee.', 'success'); self._loadUnites(); }).catch(function(err) { UI.toast(err.message, 'error'); }); });
+  },
+
   // === Localites ===
   _loadLocalites: function() {
     var self = this;
@@ -170,15 +214,34 @@ var Parametres = {
       .then(function(data) {
         var el = document.getElementById('localites-list');
         if (!data.localites.length) { el.innerHTML = '<p class="text-muted text-center">Aucune localite.</p>'; return; }
-        var html = '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Type</th><th>Pays</th><th>Actions</th></tr></thead><tbody>';
+
+        // Regroupees par categorie plutot qu'en une seule liste a plat, pour s'y retrouver.
+        var groups = [
+          { label: 'Agences — Niger', items: [] },
+          { label: 'Agences — International', items: [] },
+          { label: 'Services (Siège)', items: [] }
+        ];
         for (var i = 0; i < data.localites.length; i++) {
           var l = data.localites[i];
-          html += '<tr><td><strong>' + UI.escapeHtml(l.nom) + '</strong></td>' +
-            '<td><span class="badge ' + (l.est_service ? 'badge-success' : (l.type === 'international' ? 'badge-info' : 'badge-neutral')) + '">' + (l.est_service ? 'Service (Siege)' : l.type) + '</span></td>' +
-            '<td>' + (l.est_service ? '—' : UI.escapeHtml(l.pays)) + '</td>' +
-            '<td><button class="btn btn-sm btn-danger btn-del-loc" data-id="' + l.id + '">Supprimer</button></td></tr>';
+          if (l.est_service) groups[2].items.push(l);
+          else if (l.type === 'international') groups[1].items.push(l);
+          else groups[0].items.push(l);
         }
-        html += '</tbody></table></div>';
+        groups.forEach(function(g) { g.items.sort(function(a, b) { return a.nom.localeCompare(b.nom); }); });
+
+        var html = '';
+        groups.forEach(function(g) {
+          if (!g.items.length) return;
+          html += '<div class="mb-md"><div class="text-sm text-muted mb-sm" style="font-weight:700;text-transform:uppercase;letter-spacing:0.03em">' + UI.escapeHtml(g.label) + ' (' + g.items.length + ')</div>' +
+            '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Pays</th><th>Actions</th></tr></thead><tbody>';
+          for (var j = 0; j < g.items.length; j++) {
+            var it = g.items[j];
+            html += '<tr><td><strong>' + UI.escapeHtml(it.nom) + '</strong></td>' +
+              '<td>' + (it.est_service ? '—' : UI.escapeHtml(it.pays)) + '</td>' +
+              '<td><button class="btn btn-sm btn-danger btn-del-loc" data-id="' + it.id + '">Supprimer</button></td></tr>';
+          }
+          html += '</tbody></table></div></div>';
+        });
         el.innerHTML = html;
         el.querySelectorAll('.btn-del-loc').forEach(function(btn) {
           btn.addEventListener('click', function() { self._deleteLocalite(parseInt(this.getAttribute('data-id'))); });
