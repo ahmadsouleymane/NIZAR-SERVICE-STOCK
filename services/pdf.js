@@ -7,9 +7,10 @@ const path = require('path');
 const LOGO_PATH = path.join(__dirname, '..', 'public', 'logo.jpeg');
 const OUTPUT_DIR = require('./paths').uploadDir;
 
-// Modele officiel « Bon de reception » fourni par le gestionnaire de stock :
-// on charge ce PDF tel quel et on y superpose les donnees (une ligne par article).
+// Modeles officiels fournis par le gestionnaire de stock : on charge ces PDF
+// tels quels et on y superpose les donnees (une ligne par article).
 const MODEL_PATH = path.join(__dirname, 'modeles', 'bon-de-reception.pdf');
+const LIVRAISON_MODEL_PATH = path.join(__dirname, 'modeles', 'bon-de-livraison.pdf');
 
 // S'assurer que le dossier de sortie existe
 if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -57,7 +58,7 @@ function generateFichePDF(fiche, lignes) {
 
         // === N° (référence de la fiche) : remplace « 000 » du modele ===
         // On couvre UNIQUEMENT l'ancien « 000 » (sans toucher au « ° » de « N° »)
-        page.drawRectangle({ x: 296, y: height - 133, width: 20, height: 15, color: rgb(1, 1, 1) });
+        page.drawRectangle({ x: 295, y: height - 135, width: 40, height: 18, color: rgb(1, 1, 1) });
         page.drawText(fiche.reference || '', {
           x: 299, y: base(122, 9.5), size: 9.5, font, color
         });
@@ -66,8 +67,9 @@ function generateFichePDF(fiche, lignes) {
         page.drawText(formatDate(fiche.date_envoi || fiche.date_creation), {
           x: 432, y: base(186, 10), size: 10, font, color
         });
-        page.drawText(destFull, {
-          x: 462, y: base(210, 9.5), size: 9.5, font, color
+        const destFit = fitText(font, destFull, 60, 9.5, 6);
+        page.drawText(destFit.text, {
+          x: 462, y: base(210, destFit.size), size: destFit.size, font, color
         });
 
         // === TABLEAU : UNE ligne par article (aucune ligne vide) ===
@@ -146,9 +148,9 @@ function generateFichePDF(fiche, lignes) {
 
 /**
  * Genere le PDF « Bon de livraison » quand le fournisseur n'a pas transmis
- * de bon de livraison papier. Utilise le meme modele officiel que le bon de
- * reception, avec un overlay adapte : titre « BON DE LIVRAISON », bloc infos
- * Fournisseur / N° BL / N° fiche de besoin, signatures Fournisseur + Gestionnaire.
+ * de bon de livraison papier. Utilise le modele officiel dedie (titre,
+ * signatures Gestionnaire/Fournisseur deja imprimes) et y superpose les
+ * donnees : reference, date, fournisseur, N° BL / N° fiche de besoin, articles.
  * @param {Object} fiche - { reference, fournisseur_nom, date_entree, numero_bl, numero_fiche_besoin }
  * @param {Array} lignes - [{ article_nom, quantite, numero_debut, numero_fin, unite }]
  * @returns {Promise<string>} chemin '/uploads/...' du PDF genere
@@ -157,27 +159,20 @@ function generateBonLivraisonPDF(fiche, lignes) {
   return new Promise((resolve, reject) => {
     (async () => {
       try {
-        const modelBytes = fs.readFileSync(MODEL_PATH);
+        const modelBytes = fs.readFileSync(LIVRAISON_MODEL_PATH);
         const pdfDoc = await PDFLibDocument.load(modelBytes);
         const page = pdfDoc.getPage(0);
         const { height } = page.getSize();
 
         const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-        const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
         const color = rgb(0.12, 0.12, 0.12);
         const grey = rgb(0.45, 0.45, 0.45);
         const whiteColor = rgb(1, 1, 1);
 
         const base = (topY, sz) => height - topY - sz * 0.72;
 
-        // === TITRE : cacher « BON DE RÉCEPTION » et ecrire « BON DE LIVRAISON » ===
-        page.drawRectangle({ x: 68, y: height - 113, width: 170, height: 16, color: whiteColor });
-        page.drawText('BON DE LIVRAISON', {
-          x: 70, y: base(103, 10), size: 10, font: fontBold, color
-        });
-
-        // === N° (reference) : remplacer « 000 » ===
-        page.drawRectangle({ x: 296, y: height - 133, width: 30, height: 15, color: whiteColor });
+        // === N° (reference) : remplacer le « 000 » imprime sur le modele ===
+        page.drawRectangle({ x: 295, y: height - 135, width: 40, height: 18, color: whiteColor });
         page.drawText(fiche.reference || '', {
           x: 299, y: base(122, 9.5), size: 9.5, font, color
         });
@@ -187,27 +182,24 @@ function generateBonLivraisonPDF(fiche, lignes) {
           x: 432, y: base(186, 10), size: 10, font, color
         });
 
-        // === FOURNISSEUR (remplace « Destination ») ===
-        // Effacer l'ancien libelle « Destination : »
-        page.drawRectangle({ x: 390, y: height - 215, width: 140, height: 14, color: whiteColor });
-        page.drawText('Fournisseur : ' + (fiche.fournisseur_nom || '-'), {
-          x: 395, y: base(210, 9.5), size: 9.5, font, color
+        // === FOURNISSEUR (sur la meme ligne que la date, a gauche) ===
+        const fournFit = fitText(font, 'Fournisseur : ' + (fiche.fournisseur_nom || '-'), 300, 10, 7);
+        page.drawText(fournFit.text, {
+          x: 70.8, y: base(186, fournFit.size), size: fournFit.size, font, color
         });
 
-        // === N° BL + N° Fiche de besoin (sous la date) ===
-        page.drawText('N° BL : ' + (fiche.numero_bl || '-'), {
-          x: 395, y: base(230, 9), size: 9, font, color
-        });
-        page.drawText('Fiche besoin : ' + (fiche.numero_fiche_besoin || '-'), {
-          x: 395, y: base(247, 9), size: 9, font, color
-        });
+        // === N° BL + N° Fiche de besoin (ligne compacte juste au-dessus du tableau) ===
+        page.drawText(
+          'N° BL : ' + (fiche.numero_bl || '-') + '      Fiche besoin : ' + (fiche.numero_fiche_besoin || '-'),
+          { x: 70.8, y: base(198, 7.5), size: 7.5, font, color: grey }
+        );
 
         // === TABLEAU : centrer tous les elements ===
-        const ROW_SEPS = [266.7, 287.6, 308.8, 330.1, 351.3, 372.5, 393.8, 415.0, 435.9, 457.1, 478.4, 499.6];
+        const ROW_SEPS = [243.1, 264.2, 285.4, 306.7, 327.8, 349.0, 370.3, 391.4, 412.6, 433.9, 455.0, 476.2];
         const TABLE_LEFT = 70.8;
         const TABLE_W = 460.1;
         const PITCH = 21;
-        const firstRowTop = 255;
+        const firstRowTop = 231.5;
         const filled = Math.min(lignes.length, ROW_SEPS.length);
 
         // Centres des colonnes (calcules a partir du modele)
@@ -259,22 +251,11 @@ function generateBonLivraisonPDF(fiche, lignes) {
 
         if (lignes.length > ROW_SEPS.length) {
           page.drawText('… ' + (lignes.length - ROW_SEPS.length) + ' article(s) supplementaires (liste complete dans le systeme)', {
-            x: TABLE_LEFT + 4, y: base(505, 8), size: 8, font, color: grey
+            x: TABLE_LEFT + 4, y: base(481, 8), size: 8, font, color: grey
           });
         }
 
-        // === SIGNATURES : Fournisseur (gauche) / Gestionnaire de stock (droite) ===
-        // Effacer « CHEF D'AGENCE » (droite) et « GESTIONNAIRE DE STOCK » (gauche)
-        // du modele pour les remplacer
-        page.drawRectangle({ x: 68, y: height - 580, width: 180, height: 30, color: whiteColor });
-        page.drawRectangle({ x: 370, y: height - 580, width: 180, height: 30, color: whiteColor });
-
-        page.drawText('FOURNISSEUR', {
-          x: 100, y: base(558, 9), size: 9, font: fontBold, color: grey
-        });
-        page.drawText('GESTIONNAIRE DE STOCK', {
-          x: 370, y: base(558, 9), size: 9, font: fontBold, color: grey
-        });
+        // Signatures « GESTIONNAIRE DE STOCK » / « FOURNISSEUR » deja imprimees sur le modele
 
         // === Enregistrement ===
         const pdfBytes = await pdfDoc.save();
@@ -289,25 +270,21 @@ function generateBonLivraisonPDF(fiche, lignes) {
   });
 }
 
-// Libelle d'unite pour le PDF (meme rendu que l'UI)
+// Libelle d'unite pour le PDF (meme rendu que l'UI) — toujours l'unite fixee par l'admin sur l'article
 function uniteLabel(u) {
   const map = {
     'unite': 'Unité', 'piece': 'Unité', 'carton': 'Carton', 'lot': 'Lot',
     'rouleau': 'Rouleau', 'paquet': 'Paquet', 'boite': 'Boîte',
     'flacon': 'Flacon', 'ramette': 'Ramette'
   };
-  return map[(u || '').toLowerCase()] || (u || '');
+  const s = String(u || '').trim();
+  if (!s) return '-';
+  return map[s.toLowerCase()] || s;
 }
 
 // Libellé d'unité pour la colonne « Unité » de la fiche imprimée.
-// Évite la redondance : si l'unité est vide ou générique (« unite »/« piece »),
-// on n'écrit pas « Unité » dans la colonne « Unité » — on met un tiret.
 function ficheUniteLabel(u) {
-  const s = String(u || '').trim();
-  if (!s) return '-';
-  const generic = ['unite', 'piece', 'unité'];
-  if (generic.indexOf(s.toLowerCase()) !== -1) return '-';
-  return s;
+  return uniteLabel(u);
 }
 
 /**
@@ -424,6 +401,17 @@ function generateStockPDF(articles, res) {
 
 function formatFCFA(n) {
   return Number(n || 0).toLocaleString('fr-FR');
+}
+
+// Reduit la taille de police jusqu'a ce que le texte tienne dans maxWidth
+// (jamais en dessous de minSize) ; tronque avec « … » en dernier recours.
+function fitText(font, text, maxWidth, size, minSize) {
+  let s = size;
+  while (s > minSize && font.widthOfTextAtSize(text, s) > maxWidth) s -= 0.5;
+  if (font.widthOfTextAtSize(text, s) <= maxWidth) return { text, size: s };
+  let t = text;
+  while (t.length > 1 && font.widthOfTextAtSize(t + '…', s) > maxWidth) t = t.slice(0, -1);
+  return { text: t + '…', size: s };
 }
 
 function formatDate(isoStr) {
