@@ -27,12 +27,18 @@ router.get('/', authenticate, (req, res) => {
   const off = parseInt(offset, 10) || 0;
 
   const series = db.prepare(`
-    SELECT s.*, a.nom as article_nom, a.reference, l.nom as localite_nom,
-           fr.reference as fiche_reference
+    SELECT s.*, a.nom as article_nom, a.reference,
+           COALESCE(l.nom, l2.nom) as localite_nom,
+           COALESCE(fr.reference, fr2.reference) as fiche_reference
     FROM series_numeros s
     LEFT JOIN articles a ON s.article_id = a.id
+    -- Jointure directe : source_id pointe vers une fiche_reception
     LEFT JOIN fiches_reception fr ON s.source_type = 'sortie' AND fr.id = s.source_id
     LEFT JOIN localites l ON fr.localite_id = l.id
+    -- Jointure indirecte : source_id pointe vers un mouvement (import) → fiche
+    LEFT JOIN mouvements m2 ON s.source_type = 'sortie' AND m2.id = s.source_id
+    LEFT JOIN fiches_reception fr2 ON m2.fiche_id = fr2.id
+    LEFT JOIN localites l2 ON fr2.localite_id = l2.id
     ${where}
     ORDER BY s.date DESC, s.id DESC
     LIMIT ? OFFSET ?
