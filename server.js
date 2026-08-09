@@ -48,6 +48,20 @@ app.use((req, res, next) => {
   next();
 });
 
+// Sauvegarde reactive : toute requete d'ecriture (POST/PUT/PATCH/DELETE) qui
+// reussit programme une sauvegarde GitHub sous quelques secondes (debounce),
+// au lieu d'attendre l'intervalle periodique de 3 min — evite de perdre une
+// modification admin faite juste avant un redemarrage/redeploiement.
+const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (db && WRITE_METHODS.has(req.method) && res.statusCode >= 200 && res.statusCode < 400) {
+      require('./services/cloud_backup').scheduleSave(db);
+    }
+  });
+  next();
+});
+
 // Sante du service (public) — utilisé par le front pour détecter le réveil du
 // back-end (plan Render gratuit : mise en veille après 15 min d'inactivité).
 app.get('/api/health', (req, res) => {

@@ -149,8 +149,12 @@ async function save(db, reason) {
     console.log('[backup] Base locale sans articles — sauvegarde ignorée (préserve la sauvegarde réelle).');
     return;
   }
-  const tmp = DB_FILE + '.backup.tmp';
+  // Nom unique : VACUUM INTO refuse d'ecrire si le fichier cible existe deja.
+  // Un nom fixe reutilise entre appels bloquerait TOUTE sauvegarde future des
+  // qu'un appel precedent est interrompu (crash, SIGKILL) sans nettoyer son tmp.
+  const tmp = DB_FILE + '.backup-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.tmp';
   try {
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
     // GARDE-FOU 2 : anti « split-brain ». Si deux instances tournent en parallele
     // (ex. redeploiement en cours, ou script local avec les memes identifiants),
     // chacune sauvegarde la sienne toutes les ~3 min et peut ecraser les vraies
@@ -164,7 +168,7 @@ async function save(db, reason) {
         let base64 = existing.content;
         if (!base64) { const blob = await githubGetBlob(existing.sha); base64 = blob.content; }
         if (base64) {
-          const tmpCheck = DB_FILE + '.check.tmp';
+          const tmpCheck = DB_FILE + '.check-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.tmp';
           fs.writeFileSync(tmpCheck, Buffer.from(base64, 'base64'));
           const Database = require('better-sqlite3');
           existingDb = new Database(tmpCheck, { readonly: true });
@@ -172,14 +176,16 @@ async function save(db, reason) {
           const local = summarize(db);
           existingDb.close();
           fs.unlinkSync(tmpCheck);
-          // Uniquement les fiches/mouvements : un compte de categories plus bas est
-          // souvent une vraie action admin (fusion/suppression), pas une perte de
-          // donnees — contrairement a un nombre de fiches qui ne devrait jamais
-          // baisser tout seul.
-          if (local.fiches < remote.fiches || local.mouvements < remote.mouvements) {
-            console.warn('[backup] Base locale moins riche que la sauvegarde distante (fiches ' +
-              local.fiches + '<' + remote.fiches + ' ou mouvements ' + local.mouvements + '<' + remote.mouvements +
-              ') — sauvegarde ignoree pour eviter d\'ecraser des donnees plus recentes.');
+          // Seuil DRAMATIQUE uniquement (ex: 0 fiches alors qu'il y en avait 1213,
+          // le cas reel qui a cause l'incident) — pas une simple baisse de 1 ou 2,
+          // qui correspond a une suppression admin legitime (le bouton Supprimer
+          // d'une fiche/entree existe et doit pouvoir se sauvegarder normalement).
+          const chuteFiches = remote.fiches > 0 && local.fiches < remote.fiches * 0.5;
+          const chuteMouvements = remote.mouvements > 0 && local.mouvements < remote.mouvements * 0.5;
+          if (chuteFiches || chuteMouvements) {
+            console.warn('[backup] Chute brutale detectee (fiches ' +
+              local.fiches + ' vs ' + remote.fiches + ', mouvements ' + local.mouvements + ' vs ' + remote.mouvements +
+              ') — sauvegarde ignoree, probable base non restauree/differente. Investiguer avant de forcer.');
             return;
           }
         }
@@ -198,14 +204,41 @@ async function save(db, reason) {
   }
 }
 
+// === Sauvegarde reactive (debounce) ===
+// Declenchee apres CHAQUE ecriture (creation/modif/suppression, quelle que soit
+// la route) via le middleware de server.js, plutot que d'attendre l'intervalle
+// periodique de 3 min. Debounce court pour regrouper les modifications rapides
+// (ex: plusieurs lignes d'une fiche) en une seule sauvegarde au lieu d'une par
+// requete.
+let pendingSaveTimer = null;
+const DEBOUNCE_MS = (parseInt(process.env.GH_BACKUP_DEBOUNCE_SEC, 10) || 15) * 1000;
+
+function scheduleSave(db) {
+  if (!enabled()) return;
+  if (pendingSaveTimer) clearTimeout(pendingSaveTimer);
+  pendingSaveTimer = setTimeout(() => {
+    pendingSaveTimer = null;
+    save(db, 'auto').catch((err) => console.error('[backup] Sauvegarde reactive echouee :', err.message));
+  }, DEBOUNCE_MS);
+  pendingSaveTimer.unref();
+}
+
+// A l'arret, s'assurer qu'une sauvegarde programmee non encore executee parte
+// quand meme (le handler SIGTERM de start() appelle deja save() separement,
+// ceci n'est qu'un filet pour annuler le timer en attente proprement).
+function flushPendingSave() {
+  if (pendingSaveTimer) { clearTimeout(pendingSaveTimer); pendingSaveTimer = null; }
+}
+
 // === Poussée initiale (une seule fois, depuis une machine locale) ===
 async function pushInitial() {
   if (!enabled()) throw new Error('GH_BACKUP_REPO / GH_BACKUP_TOKEN manquants.');
   if (!fs.existsSync(DB_FILE)) throw new Error('Base locale introuvable : ' + DB_FILE);
   const Database = require('better-sqlite3');
   const db = new Database(DB_FILE, { readonly: true });
-  const tmp = DB_FILE + '.init.tmp';
+  const tmp = DB_FILE + '.init-' + Date.now() + '-' + Math.random().toString(36).slice(2) + '.tmp';
   try {
+    if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
     db.exec("VACUUM INTO '" + tmp.replace(/'/g, "''") + "'");
     const content = fs.readFileSync(tmp, 'base64');
     const existing = await githubGet(REMOTE_PATH);
@@ -235,4 +268,4 @@ function start(db) {
   });
 }
 
-module.exports = { enabled, restore, save, pushInitial, start, repoPath };
+module.exports = { enabled, restore, save, pushInitial, start, repoPath, scheduleSave, flushPendingSave };
