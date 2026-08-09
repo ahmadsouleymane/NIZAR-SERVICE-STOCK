@@ -19,9 +19,25 @@ const PORT = process.env.PORT || 3000;
 const isProd = process.env.NODE_ENV === 'production';
 
 // === Middleware de securite ===
-// En-tetes HTTP de securite (helmet). CSP desactive : l'app utilise des styles
-// inline (style="") — une CSP stricte casserait le rendu.
-app.use(helmet({ contentSecurityPolicy: false }));
+// En-tetes HTTP de securite (helmet), avec une CSP : bloque l'execution de tout
+// <script> injecte (XSS) qui ne viendrait pas de nos propres fichiers ou du CDN
+// Chart.js. Les styles restent en 'unsafe-inline' (utilises massivement via
+// style="" dans le rendu JS) — ce n'est pas un vecteur d'execution de code.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", 'https://cdn.jsdelivr.net'],
+      styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+      fontSrc: ["'self'", 'https://fonts.gstatic.com'],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      frameAncestors: ["'self'"]
+    }
+  }
+}));
 
 // CORS restreint : l'app est servie en same-origin (Express sert le front et l'API).
 // Aucun besoin d'ouvrir les origines. Definir CORS_ORIGIN si un autre domaine doit acceder a l'API.

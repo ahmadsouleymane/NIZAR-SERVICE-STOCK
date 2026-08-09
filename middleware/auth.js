@@ -17,7 +17,9 @@ function authenticate(req, res, next) {
 
   const token = header.split(' ')[1];
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    // Algorithme explicitement fixe (HS256) : empeche toute confusion d'algorithme
+    // si un jeton forge annonce un autre algorithme (ex: "none") dans son en-tete.
+    const decoded = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
 
     // Revocation : le jeton embarque la token_version au moment du login. Si le
     // role ou le mot de passe a change depuis (routes/users.js incremente la
