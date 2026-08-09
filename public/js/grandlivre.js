@@ -101,7 +101,7 @@ var GrandLivre = {
         if (!body) return;
         var lignes = data.lignes || [];
         if (!lignes.length) { body.innerHTML = '<p class="text-sm text-muted">Aucun mouvement.</p>'; return; }
-        var html = '<div class="table-wrapper"><table><thead><tr><th>Date/heure</th><th>Entrée</th><th>Sortie</th><th>Stock réel</th></tr></thead><tbody>';
+        var html = '<div class="table-wrapper"><table><thead><tr><th>Date/heure</th><th>Entrée</th><th>Sortie</th><th>Stock réel</th><th>Destination / Fournisseur</th><th>Bon</th><th>Saisi par</th></tr></thead><tbody>';
         for (var i = 0; i < lignes.length; i++) {
           var m = lignes[i];
           html += '<tr>' +
@@ -109,6 +109,9 @@ var GrandLivre = {
             '<td>' + (m.entree ? '<span class="text-success">+' + m.entree + '</span>' : '-') + '</td>' +
             '<td>' + (m.sortie ? '<span class="text-danger">-' + m.sortie + '</span>' : '-') + '</td>' +
             '<td><strong>' + m.stock_reel + '</strong></td>' +
+            '<td>' + UI.escapeHtml(m.lieu || '-') + '</td>' +
+            '<td class="text-sm">' + UI.escapeHtml(m.fiche_reference || '-') + '</td>' +
+            '<td class="text-sm">' + UI.escapeHtml(m.username || '-') + '</td>' +
             '</tr>';
         }
         html += '</tbody></table></div>';

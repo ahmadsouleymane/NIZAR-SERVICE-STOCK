@@ -56,7 +56,7 @@ var FichesBesoin = {
 
     var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Reference</th><th>Date</th><th>Lignes</th><th>Statut</th><th>Actions</th>' +
+      '<th>Reference</th><th>Date</th><th>Lignes</th><th>Statut</th><th>Créé par</th><th>Actions</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < fiches.length; i++) {
@@ -66,6 +66,7 @@ var FichesBesoin = {
         '<td>' + UI.formatDate(f.date_creation) + '</td>' +
         '<td>' + f.nb_lignes + '</td>' +
         '<td>' + this._statutBadge(f.statut) + '</td>' +
+        '<td class="text-sm">' + UI.escapeHtml(f.cree_par || '-') + '</td>' +
         '<td class="actions">';
       if (f.statut === 'creee') {
         html += '<button class="btn btn-sm btn-warning btn-transmettre" data-id="' + f.id + '">Transmettre</button>';

@@ -125,7 +125,8 @@ var Fiches = {
         html += '<button class="btn btn-sm btn-primary btn-archive-fiche" data-id="' + f.id + '">Archiver</button>';
       }
       if (UI.isAdmin()) {
-        html += '<button class="btn btn-sm btn-danger btn-del-fiche" data-id="' + f.id + '">Suppr.</button>';
+        html += '<button class="btn btn-sm btn-secondary btn-edit-fiche" data-id="' + f.id + '">Modifier</button>' +
+          '<button class="btn btn-sm btn-danger btn-del-fiche" data-id="' + f.id + '">Suppr.</button>';
       }
 
       html += '</td></tr>';
@@ -133,7 +134,7 @@ var Fiches = {
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-archive-fiche', 'btn-print-fiche', 'btn-del-fiche'].forEach(function(cls) {
+    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-archive-fiche', 'btn-print-fiche', 'btn-edit-fiche', 'btn-del-fiche'].forEach(function(cls) {
       var btns = el.querySelectorAll('.' + cls);
       for (var j = 0; j < btns.length; j++) {
         btns[j].addEventListener('click', function() {
@@ -143,6 +144,7 @@ var Fiches = {
           else if (this.classList.contains('btn-upload-scan')) self._uploadScan(id);
           else if (this.classList.contains('btn-archive-fiche')) self._archiveFiche(id);
           else if (this.classList.contains('btn-print-fiche')) self._imprimerPDF(id);
+          else if (this.classList.contains('btn-edit-fiche')) self._showEnvoiForm(id);
           else if (this.classList.contains('btn-del-fiche')) self._deleteFiche(id);
         });
       }
@@ -162,10 +164,17 @@ var Fiches = {
     return html;
   },
 
-  _showEnvoiForm: function() {
+  // Sans argument : formulaire de creation. Avec un id : formulaire de modification
+  // (admin seulement), pre-rempli avec la fiche existante.
+  _showEnvoiForm: function(editId) {
     var self = this;
-    API.getLocalites().then(function(results) {
-      var localites = results.localites;
+    var loadData = editId
+      ? Promise.all([API.getLocalites(), API.getFiche(editId)])
+      : Promise.all([API.getLocalites(), Promise.resolve(null)]);
+
+    loadData.then(function(results) {
+      var localites = results[0].localites;
+      var editData = results[1];
 
       var locOptions = '<option value="">Choisir la destination...</option>';
       var agences = '<optgroup label="Agences">';
@@ -177,7 +186,14 @@ var Fiches = {
       }
       locOptions += agences + '</optgroup>' + services + '</optgroup>';
 
-      self._lignes = [{ article_id: '', quantite: 1, unite: '', numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
+      self._editId = editId || null;
+      if (editData) {
+        self._lignes = editData.lignes.map(function(l) {
+          return { article_id: l.article_id, quantite: l.quantite, unite: l.unite || '', numero_debut: l.numero_debut || '', numero_fin: l.numero_fin || '', article_type: l.type_article || '', article_nom: l.article_nom || '' };
+        });
+      } else {
+        self._lignes = [{ article_id: '', quantite: 1, unite: '', numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
+      }
       self._acLignes = [];
 
       var body =
@@ -185,10 +201,12 @@ var Fiches = {
         '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
         '<div id="lignes-envoi"></div>';
 
-      UI.modal('Nouvelle sortie', body, [
+      UI.modal(editId ? 'Modifier la sortie' : 'Nouvelle sortie', body, [
         { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-        { label: 'Valider la sortie', cls: 'btn-primary', callback: function(m) { self._saveEnvoi(m); } }
+        { label: editId ? 'Enregistrer les modifications' : 'Valider la sortie', cls: 'btn-primary', callback: function(m) { self._saveEnvoi(m); } }
       ]);
+
+      if (editData) document.getElementById('envoi-loc').value = editData.fiche.localite_id;
 
       document.getElementById('btn-add-line').addEventListener('click', function() {
         self._lignes.push({ article_id: '', quantite: 1, unite: '', numero_debut: '', numero_fin: '', article_type: '', article_nom: '' });
@@ -310,6 +328,20 @@ var Fiches = {
 
     if (submitBtn) submitBtn.disabled = true;
 
+    if (self._editId) {
+      API.updateFiche(self._editId, { localite_id: locId, articles: arts })
+        .then(function(data) {
+          UI.toast('Sortie modifiée — stock recalculé, PDF régénéré.', 'success');
+          modal.close();
+          self._load();
+        })
+        .catch(function(err) {
+          if (submitBtn) submitBtn.disabled = false;
+          UI.toast(err.message, 'error');
+        });
+      return;
+    }
+
     // Pre-ouvrir la fenetre d'impression pendant le geste utilisateur (anti-bloqueur de popup) :
     // on la redirigera vers la fiche creee une fois la creation terminee.
     var printWin = window.open('', '_blank');
@@ -345,16 +377,15 @@ var Fiches = {
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div>' + self._statutBadge(f.statut) + '</div></div>' +
         (f.numero_facture ? '<div class="flex-between mb-md"><div><strong>N° facture:</strong> ' + UI.escapeHtml(f.numero_facture) + '</div></div>' : '') +
-        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>';
+        '<div class="flex-between mb-md"><div><strong>Destination:</strong> ' + UI.escapeHtml(f.localite_nom) + (f.localite_service ? ' <span class="badge badge-success">Siege</span>' : '') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_envoi || f.date_creation) + '</div></div>' +
+        '<div class="flex-between mb-md"><div><strong>Créé par:</strong> ' + UI.escapeHtml(f.cree_par || '-') + '</div></div>';
 
       if (f.notes) html += '<p class="mb-md"><strong>Notes:</strong> ' + UI.escapeHtml(f.notes) + '</p>';
 
       if (lignes.length) {
         html += '<div class="table-wrapper"><table><thead><tr><th>Article</th><th>Unité</th><th>Qté</th><th>N° début</th><th>N° fin</th></tr></thead><tbody>';
         for (var i = 0; i < lignes.length; i++) {
-          var un = (lignes[i].unite || '').trim();
-          var unLabel = (un && un !== 'unite' && un !== 'piece') ? un : '-';
-          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + UI.escapeHtml(unLabel) + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
+          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + UI.escapeHtml(UI.uniteLabel(lignes[i].unite)) + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
         }
         html += '</tbody></table></div>';
       }
@@ -379,6 +410,9 @@ var Fiches = {
         actions.unshift({ label: 'Télécharger PDF', cls: 'btn-accent', callback: function(m) { self._downloadPDF(id); } });
       }
       actions.unshift({ label: 'Imprimer', cls: 'btn-secondary', callback: function(m) { m.close(); self._imprimerPDF(id); } });
+      if (UI.isAdmin()) {
+        actions.unshift({ label: 'Modifier', cls: 'btn-secondary', callback: function(m) { m.close(); self._showEnvoiForm(id); } });
+      }
 
       UI.modal('Fiche ' + UI.escapeHtml(f.reference), html, actions);
     }).catch(function(err) { UI.toast(err.message, 'error'); });

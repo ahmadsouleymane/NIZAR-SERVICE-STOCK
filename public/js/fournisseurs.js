@@ -34,10 +34,11 @@ var Fournisseurs = {
     }
 
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Nom</th><th>Contact</th><th>Téléphone</th><th>Email</th><th>Délai</th><th>Articles</th><th>Actions</th>' +
+      '<th>Nom</th><th>Contact</th><th>Téléphone</th><th>Email</th><th>Délai</th><th>Articles</th><th>Commandes</th><th>Actions</th>' +
       '</tr></thead><tbody>';
 
     var self = this;
+    var isAdmin = UI.isAdmin();
     for (var i = 0; i < fournisseurs.length; i++) {
       var f = fournisseurs[i];
       html += '<tr>' +
@@ -47,10 +48,11 @@ var Fournisseurs = {
         '<td>' + (f.email ? '<a href="mailto:' + UI.escapeHtml(f.email) + '">' + UI.escapeHtml(f.email) + '</a>' : '-') + '</td>' +
         '<td>' + (f.delai_moyen_j || '-') + ' j</td>' +
         '<td>' + (f.nb_articles || 0) + '</td>' +
+        '<td>' + (f.nb_commandes || 0) + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-secondary btn-detail" data-id="' + f.id + '" title="Details">Details</button>' +
         '<button class="btn btn-sm btn-secondary btn-edit-f" data-id="' + f.id + '" title="Modifier">Modifier</button>' +
-        '<button class="btn btn-sm btn-danger btn-delete-f" data-id="' + f.id + '" title="Supprimer">Suppr.</button>' +
+        (isAdmin ? '<button class="btn btn-sm btn-danger btn-delete-f" data-id="' + f.id + '" title="Supprimer">Suppr.</button>' : '') +
         '</td>' +
         '</tr>';
     }

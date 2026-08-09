@@ -272,6 +272,110 @@ router.post('/:id/photos', authenticate, upload, verifyUpload, (req, res) => {
   res.status(201).json({ photo });
 });
 
+// PUT /api/entrees/:id — modifier une entree deja creee (admin seulement).
+// Brouillon (validee=0) : simple mise a jour des champs et de la liste d'articles
+// (rien n'a encore ete applique au stock). Entree validee (validee=1) : annule
+// l'effet stock des anciennes lignes puis applique le nouveau contenu.
+router.put('/:id', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const { fournisseur_id, numero_bl, numero_facture, numero_fiche_besoin, notes, articles } = req.body;
+
+  const fiche = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: "Fiche d'entree introuvable." });
+  if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
+
+  if (fournisseur_id) {
+    const f = db.prepare('SELECT id FROM fournisseurs WHERE id = ?').get(fournisseur_id);
+    if (!f) return res.status(400).json({ error: 'Fournisseur introuvable.' });
+  }
+
+  for (let i = 0; i < articles.length; i++) {
+    const qte = parseInt(articles[i].quantite, 10);
+    if (isNaN(qte) || qte <= 0) return res.status(400).json({ error: 'Quantite invalide ligne ' + (i + 1) + '.' });
+    articles[i].quantite = qte;
+  }
+
+  const ficheId = req.params.id;
+
+  try {
+    const transaction = db.transaction(() => {
+      if (fiche.validee === 0) {
+        // Brouillon : rien n'a ete applique au stock, on remplace juste la liste prevue.
+        db.prepare(`
+          UPDATE fiches_entree SET fournisseur_id = ?, numero_bl = ?, numero_facture = ?,
+            numero_fiche_besoin = ?, notes = ?, articles_json = ?, updated_at = datetime('now','localtime')
+          WHERE id = ?
+        `).run(fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, notes || null, JSON.stringify(articles), ficheId);
+        return;
+      }
+
+      // Entree deja validee : annuler l'effet stock des anciennes lignes puis reappliquer.
+      const anciennesLignes = db.prepare('SELECT article_id, quantite FROM fiche_entree_articles WHERE fiche_id = ?').all(ficheId);
+      const restoreStock = db.prepare("UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now','localtime') WHERE id = ?");
+      for (const l of anciennesLignes) {
+        const article = db.prepare('SELECT nom, stock_actuel FROM articles WHERE id = ?').get(l.article_id);
+        if (article && article.stock_actuel < l.quantite) {
+          throw new Error('Impossible de modifier : du stock de ' + article.nom + ' a deja ete consomme depuis cette entree.');
+        }
+        restoreStock.run(l.quantite, l.article_id);
+      }
+
+      db.prepare('DELETE FROM mouvements WHERE entree_id = ?').run(ficheId);
+      db.prepare("DELETE FROM series_numeros WHERE source_type = 'entree' AND source_id = ?").run(ficheId);
+      db.prepare('DELETE FROM fiche_entree_articles WHERE fiche_id = ?').run(ficheId);
+
+      const insertLigne = db.prepare(`
+        INSERT INTO fiche_entree_articles (fiche_id, article_id, quantite, numero_debut, numero_fin, observation)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      const insertMvt = db.prepare(`
+        INSERT INTO mouvements (article_id, type, quantite, motif, user_id, fournisseur_id, entree_id, numero_debut, numero_fin, date)
+        VALUES (?, 'entree', ?, 'Entree fournisseur (modifiee) — ' || ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+      `);
+      const updateStock = db.prepare("UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?");
+
+      for (const art of articles) {
+        const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
+        if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
+
+        if (article.type_article === 'numerote') {
+          if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
+            throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
+          }
+          const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'entree');
+          if (overlap) throw new Error('Chevauchement pour ' + article.nom + ' : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
+          recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'entree', ficheId);
+        }
+
+        insertLigne.run(ficheId, art.article_id, art.quantite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
+        insertMvt.run(art.article_id, art.quantite, fiche.reference, req.user.id, fournisseur_id || null, ficheId, art.numero_debut || null, art.numero_fin || null);
+        updateStock.run(art.quantite, art.article_id);
+      }
+
+      db.prepare(`
+        UPDATE fiches_entree SET fournisseur_id = ?, numero_bl = ?, numero_facture = ?,
+          numero_fiche_besoin = ?, notes = ?, updated_at = datetime('now','localtime')
+        WHERE id = ?
+      `).run(fournisseur_id || null, numero_bl || null, numero_facture || null, numero_fiche_besoin || null, notes || null, ficheId);
+    });
+    transaction();
+  } catch (err) {
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
+
+  const ficheMaj = db.prepare('SELECT * FROM fiches_entree WHERE id = ?').get(ficheId);
+  const lignes = fiche.validee === 1
+    ? db.prepare(`
+        SELECT fea.*, a.nom as article_nom, a.unite FROM fiche_entree_articles fea
+        LEFT JOIN articles a ON fea.article_id = a.id WHERE fea.fiche_id = ?
+      `).all(ficheId)
+    : articles;
+
+  logAudit(db, req.user.id, req.user.username, 'MODIF_ENTREE', fiche.reference || String(ficheId));
+  res.json({ fiche: ficheMaj, lignes, message: 'Entree modifiee.' });
+});
+
 // DELETE /api/entrees/:id (admin seulement)
 router.delete('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;

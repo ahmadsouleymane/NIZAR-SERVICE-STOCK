@@ -16,8 +16,15 @@ router.get('/journal', authenticate, (req, res) => {
   if (fin) { where += ' AND m.date <= ?'; params.push(fin + ' 23:59:59'); }
 
   const rows = db.prepare(`
-    SELECT m.id, m.article_id, m.date, m.type, m.quantite, a.nom as article_nom, a.unite
-    FROM mouvements m LEFT JOIN articles a ON m.article_id = a.id
+    SELECT m.id, m.article_id, m.date, m.type, m.quantite, a.nom as article_nom, a.unite,
+           l.nom as localite_nom, f.nom as fournisseur_nom, fr.reference as fiche_reference,
+           u.username
+    FROM mouvements m
+    LEFT JOIN articles a ON m.article_id = a.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
+    LEFT JOIN fiches_reception fr ON m.fiche_id = fr.id
+    LEFT JOIN users u ON m.user_id = u.id
     ${where}
     ORDER BY m.article_id ASC, m.date ASC, m.id ASC
   `).all(...params);
@@ -34,7 +41,10 @@ router.get('/journal', authenticate, (req, res) => {
       unite: r.unite,
       entree: r.type === 'entree' ? r.quantite : 0,
       sortie: r.type === 'sortie' ? r.quantite : 0,
-      stock_reel: soldes[r.article_id]
+      stock_reel: soldes[r.article_id],
+      lieu: r.type === 'entree' ? (r.fournisseur_nom || '-') : (r.localite_nom || '-'),
+      fiche_reference: r.fiche_reference || null,
+      username: r.username || null
     };
   });
 
@@ -53,8 +63,15 @@ router.get('/journal/export', authenticate, async (req, res) => {
   if (fin) { where += ' AND m.date <= ?'; params.push(fin + ' 23:59:59'); }
 
   const rows = db.prepare(`
-    SELECT m.article_id, m.date, m.type, m.quantite, a.nom as article_nom, a.unite
-    FROM mouvements m LEFT JOIN articles a ON m.article_id = a.id
+    SELECT m.article_id, m.date, m.type, m.quantite, a.nom as article_nom, a.unite,
+           l.nom as localite_nom, f.nom as fournisseur_nom, fr.reference as fiche_reference,
+           u.username
+    FROM mouvements m
+    LEFT JOIN articles a ON m.article_id = a.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
+    LEFT JOIN fiches_reception fr ON m.fiche_id = fr.id
+    LEFT JOIN users u ON m.user_id = u.id
     ${where}
     ORDER BY m.article_id ASC, m.date ASC, m.id ASC
   `).all(...params);
@@ -67,7 +84,10 @@ router.get('/journal/export', authenticate, async (req, res) => {
     { header: 'Article', key: 'article', width: 30 },
     { header: 'Entree', key: 'entree', width: 12 },
     { header: 'Sortie', key: 'sortie', width: 12 },
-    { header: 'Stock reel', key: 'stock_reel', width: 14 }
+    { header: 'Stock reel', key: 'stock_reel', width: 14 },
+    { header: 'Destination / Fournisseur', key: 'lieu', width: 26 },
+    { header: 'Bon', key: 'fiche_reference', width: 16 },
+    { header: 'Saisi par', key: 'username', width: 16 }
   ];
   const headerRow = sheet.getRow(1);
   headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -81,7 +101,10 @@ router.get('/journal/export', authenticate, async (req, res) => {
       article: r.article_nom,
       entree: r.type === 'entree' ? r.quantite : '',
       sortie: r.type === 'sortie' ? r.quantite : '',
-      stock_reel: soldes[r.article_id]
+      stock_reel: soldes[r.article_id],
+      lieu: r.type === 'entree' ? (r.fournisseur_nom || '-') : (r.localite_nom || '-'),
+      fiche_reference: r.fiche_reference || '-',
+      username: r.username || '-'
     });
   }
 

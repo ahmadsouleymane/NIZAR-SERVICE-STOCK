@@ -101,19 +101,23 @@ var Entrees = {
       } else if (f.statut !== 'archivee') {
         html += '<button class="btn btn-sm btn-success btn-photo-entree" data-id="' + f.id + '">Photo BL/Facture</button>';
       }
-      if (UI.isAdmin()) html += '<button class="btn btn-sm btn-danger btn-del-entree" data-id="' + f.id + '">Suppr.</button>';
+      if (UI.isAdmin()) {
+        html += '<button class="btn btn-sm btn-secondary btn-edit-entree" data-id="' + f.id + '">Modifier</button>' +
+          '<button class="btn btn-sm btn-danger btn-del-entree" data-id="' + f.id + '">Suppr.</button>';
+      }
       html +=
         '</td></tr>';
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    var btns = el.querySelectorAll('.btn-view-entree, .btn-photo-entree, .btn-del-entree, .btn-continue-entree');
+    var btns = el.querySelectorAll('.btn-view-entree, .btn-photo-entree, .btn-del-entree, .btn-continue-entree, .btn-edit-entree');
     for (var j = 0; j < btns.length; j++) {
       btns[j].addEventListener('click', function() {
         var id = parseInt(this.getAttribute('data-id'));
         if (this.classList.contains('btn-view-entree')) self._viewEntree(id);
         else if (this.classList.contains('btn-photo-entree')) self._addPhoto(id);
+        else if (this.classList.contains('btn-edit-entree')) self._showEditForm(id);
         else if (this.classList.contains('btn-del-entree')) self._deleteEntree(id);
         else if (this.classList.contains('btn-continue-entree')) self._continueDraft(id);
       });
@@ -188,6 +192,99 @@ var Entrees = {
       });
       self._refreshLignes();
     }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  // Modifier une entree deja creee (admin seulement) : fournisseur, N° BL/facture,
+  // articles/quantites. Les photos se gerent separement (bouton « + Photo » du detail).
+  _showEditForm: function(id) {
+    var self = this;
+    Promise.all([API.getFournisseurs(), API.getEntree(id)]).then(function(results) {
+      var fournisseurs = results[0].fournisseurs;
+      var data = results[1];
+      var f = data.fiche;
+
+      if (f.validee === 1) {
+        self._lignes = data.lignes.map(function(l) {
+          return { article_id: l.article_id, quantite: l.quantite, numero_debut: l.numero_debut || '', numero_fin: l.numero_fin || '', article_type: l.type_article || '', article_nom: l.article_nom || '' };
+        });
+      } else {
+        var draft = [];
+        try { draft = JSON.parse(f.articles_json || '[]'); } catch (e) { draft = []; }
+        self._lignes = draft.map(function(l) {
+          return { article_id: l.article_id, quantite: l.quantite, numero_debut: l.numero_debut || '', numero_fin: l.numero_fin || '', article_type: l.article_type || '', article_nom: l.article_nom || '' };
+        });
+      }
+      if (!self._lignes.length) self._lignes = [{ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
+      self._acLignes = [];
+      self._editId = id;
+
+      var body =
+        '<div class="form-group"><label class="form-label">Fournisseur (recherche ou ajout)</label><div id="entree-fourn-ac"></div></div>' +
+        '<div class="form-row"><div class="form-group"><label class="form-label">N° bon de livraison</label><input type="text" class="form-input" id="entree-bl" value="' + UI.escapeHtml(f.numero_bl || '') + '"></div>' +
+        '<div class="form-group"><label class="form-label">N° facture</label><input type="text" class="form-input" id="entree-facture" value="' + UI.escapeHtml(f.numero_facture || '') + '"></div></div>' +
+        '<div class="form-group"><label class="form-label">N° fiche de besoin (optionnel)</label><input type="text" class="form-input" id="entree-fb" value="' + UI.escapeHtml(f.numero_fiche_besoin || '') + '"></div>' +
+        '<div class="flex-between mb-sm"><strong>Articles</strong><button class="btn btn-sm btn-secondary" id="btn-add-line">+ Ajouter</button></div>' +
+        '<div id="lignes-entree"></div>' +
+        (f.validee === 1 ? '<p class="text-sm text-muted mt-sm">Entree deja validee : le stock sera recalcule selon la nouvelle liste.</p>' : '');
+
+      UI.modal('Modifier l\'entree ' + UI.escapeHtml(f.reference), body, [
+        { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+        { label: 'Enregistrer les modifications', cls: 'btn-primary', callback: function(m) { self._saveEditEntree(m); } }
+      ]);
+
+      self._fournAC = UI.autocomplete(document.getElementById('entree-fourn-ac'), {
+        items: fournisseurs.map(function(fo) {
+          return { id: fo.id, label: fo.nom, meta: (fo.telephone || fo.contact || '') };
+        }),
+        placeholder: 'Rechercher un fournisseur...',
+        allowAdd: true,
+        onAdd: function(text) {
+          API.createFournisseur({ nom: text }).then(function(data2) {
+            var fo = data2.fournisseur;
+            self._fournAC.set(fo.id);
+            UI.toast('Fournisseur cree : ' + fo.nom, 'success');
+          }).catch(function(err) { UI.toast(err.message, 'error'); });
+        }
+      });
+      if (f.fournisseur_id) self._fournAC.setItem({ id: f.fournisseur_id, label: f.fournisseur_nom || '' });
+
+      document.getElementById('btn-add-line').addEventListener('click', function() {
+        self._lignes.push({ article_id: '', quantite: 1, numero_debut: '', numero_fin: '', article_type: '', article_nom: '' });
+        self._refreshLignes();
+      });
+      self._refreshLignes();
+    }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  _saveEditEntree: function(modal) {
+    var submitBtn = document.getElementById('modal-btn-1');
+    if (submitBtn && submitBtn.disabled) return;
+
+    var arts = [];
+    for (var i = 0; i < this._lignes.length; i++) {
+      var l = this._lignes[i];
+      if (!l.article_id) { UI.toast('Tous les articles sont requis.', 'error'); return; }
+      arts.push({ article_id: parseInt(l.article_id), quantite: l.quantite || 1, numero_debut: l.numero_debut || null, numero_fin: l.numero_fin || null });
+    }
+
+    var self = this;
+    if (submitBtn) submitBtn.disabled = true;
+
+    var fourn = self._fournAC ? self._fournAC.value() : null;
+    API.updateEntree(self._editId, {
+      fournisseur_id: fourn ? fourn.id : null,
+      numero_bl: document.getElementById('entree-bl').value.trim(),
+      numero_facture: document.getElementById('entree-facture').value.trim(),
+      numero_fiche_besoin: document.getElementById('entree-fb').value.trim(),
+      articles: arts
+    }).then(function() {
+      UI.toast('Entrée modifiée.', 'success');
+      modal.close();
+      self._load();
+    }).catch(function(err) {
+      if (submitBtn) submitBtn.disabled = false;
+      UI.toast(err.message, 'error');
+    });
   },
 
   _refreshLignes: function() {
@@ -299,14 +396,20 @@ var Entrees = {
       var html = '<div style="font-size:0.9rem">' +
         '<div class="flex-between mb-md"><div><strong>Ref:</strong> ' + UI.escapeHtml(f.reference) + '</div><div><span class="badge ' + (f.validee === 0 ? 'badge-warning' : (f.statut === 'archivee' ? 'badge-neutral' : 'badge-success')) + '">' + (f.validee === 0 ? 'Photos requises' : (f.statut === 'archivee' ? 'Archivee' : 'Validee')) + '</span></div></div>' +
         '<div class="flex-between mb-md"><div><strong>Fournisseur:</strong> ' + UI.escapeHtml(f.fournisseur_nom || '-') + '</div><div><strong>Date:</strong> ' + UI.formatDate(f.date_entree) + '</div></div>' +
-        '<div class="flex-between mb-md"><div><strong>N° BL:</strong> ' + UI.escapeHtml(f.numero_bl || '-') + '</div><div><strong>N° facture:</strong> ' + UI.escapeHtml(f.numero_facture || '-') + '</div></div>';
+        '<div class="flex-between mb-md"><div><strong>N° BL:</strong> ' + UI.escapeHtml(f.numero_bl || '-') + '</div><div><strong>N° facture:</strong> ' + UI.escapeHtml(f.numero_facture || '-') + '</div></div>' +
+        (f.numero_fiche_besoin ? '<div class="flex-between mb-md"><div><strong>Fiche de besoin:</strong> ' + UI.escapeHtml(f.numero_fiche_besoin) + '</div></div>' : '') +
+        '<div class="flex-between mb-md"><div><strong>Créé par:</strong> ' + UI.escapeHtml(f.cree_par || '-') + '</div></div>';
 
       if (lignes.length) {
-        html += '<div class="table-wrapper"><table><thead><tr><th>Article</th><th>Qté</th><th>N° debut</th><th>N° fin</th></tr></thead><tbody>';
+        html += '<div class="table-wrapper"><table><thead><tr><th>Article</th><th>Unité</th><th>Qté</th><th>N° debut</th><th>N° fin</th></tr></thead><tbody>';
         for (var i = 0; i < lignes.length; i++) {
-          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
+          html += '<tr><td>' + UI.escapeHtml(lignes[i].article_nom || '-') + '</td><td>' + UI.escapeHtml(UI.uniteLabel(lignes[i].unite)) + '</td><td>' + lignes[i].quantite + '</td><td>' + UI.escapeHtml(lignes[i].numero_debut || '-') + '</td><td>' + UI.escapeHtml(lignes[i].numero_fin || '-') + '</td></tr>';
         }
         html += '</tbody></table></div>';
+      }
+
+      if (f.fichier_path && f.fichier_path.endsWith('.pdf')) {
+        html += '<div class="mt-md"><a href="' + UI.escapeHtml(f.fichier_path) + '" target="_blank" class="btn btn-accent btn-sm">Télécharger le bon de livraison (PDF)</a></div>';
       }
 
       html += '<div class="mt-md"><div class="flex-between"><strong>Photos archivees</strong><button class="btn btn-sm btn-secondary" id="btn-add-photo-detail">+ Photo</button></div>' +
@@ -326,6 +429,9 @@ var Entrees = {
       var actions = [{ label: 'Fermer', cls: 'btn-secondary', callback: function(m) { m.close(); } }];
       if (f.validee === 0) {
         actions.unshift({ label: 'Continuer la validation', cls: 'btn-primary', callback: function(m) { m.close(); self._continueDraft(id); } });
+      }
+      if (UI.isAdmin()) {
+        actions.unshift({ label: 'Modifier', cls: 'btn-secondary', callback: function(m) { m.close(); self._showEditForm(id); } });
       }
       UI.modal('Entree ' + UI.escapeHtml(f.reference), html, actions);
 

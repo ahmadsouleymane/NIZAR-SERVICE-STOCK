@@ -94,7 +94,7 @@ var Articles = {
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-detail-art" data-id="' + a.id + '" title="Details (historique + series)">Details</button>' +
         '<button class="btn btn-sm btn-secondary btn-edit" data-id="' + a.id + '" title="Modifier">Modifier</button>' +
-        '<button class="btn btn-sm btn-danger btn-delete" data-id="' + a.id + '" title="Supprimer">Suppr.</button>' +
+        (UI.isAdmin() ? '<button class="btn btn-sm btn-danger btn-delete" data-id="' + a.id + '" title="Supprimer">Suppr.</button>' : '') +
         '</td>' +
         '</tr>';
     }

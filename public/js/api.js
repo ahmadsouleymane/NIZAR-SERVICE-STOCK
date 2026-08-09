@@ -374,6 +374,13 @@ const API = {
     return res.json();
   },
 
+  async updateFiche(id, data) {
+    return this.fetch('/api/fiches/' + id, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    });
+  },
+
   async deleteFiche(id) {
     return this.fetch('/api/fiches/' + id, {
       method: 'DELETE'
@@ -413,6 +420,13 @@ const API = {
   async validerEntree(id) {
     return this.fetch('/api/entrees/' + id + '/valider', {
       method: 'POST'
+    });
+  },
+
+  async updateEntree(id, data) {
+    return this.fetch('/api/entrees/' + id, {
+      method: 'PUT',
+      body: JSON.stringify(data)
     });
   },
 

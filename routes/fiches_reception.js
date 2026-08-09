@@ -189,6 +189,106 @@ router.post('/', authenticate, async (req, res) => {
   }
 });
 
+// PUT /api/fiches/:id — modifier une sortie deja creee (admin seulement) : articles,
+// quantites, destination, notes. Annule l'effet stock des anciennes lignes puis
+// applique le nouveau contenu (comme une re-creation), regenere le PDF.
+router.put('/:id', authenticate, requireAdmin, async (req, res) => {
+  const db = req.db;
+  const { localite_id, articles, notes } = req.body;
+
+  const fiche = db.prepare('SELECT * FROM fiches_reception WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche introuvable.' });
+  if (!localite_id) return res.status(400).json({ error: 'Destination requise.' });
+  if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
+
+  const localite = db.prepare('SELECT id, nom FROM localites WHERE id = ?').get(localite_id);
+  if (!localite) return res.status(400).json({ error: 'Destination introuvable.' });
+
+  for (let i = 0; i < articles.length; i++) {
+    const qte = parseInt(articles[i].quantite, 10);
+    if (isNaN(qte) || qte <= 0) {
+      return res.status(400).json({ error: 'Quantite invalide pour la ligne ' + (i + 1) + ' (doit etre > 0).' });
+    }
+    articles[i].quantite = qte;
+  }
+
+  const ficheId = fiche.id;
+
+  const transaction = db.transaction(() => {
+    // 1. Annuler l'effet stock des anciennes lignes (une sortie retiree redonne le stock)
+    const anciennesLignes = db.prepare('SELECT article_id, quantite FROM fiche_reception_articles WHERE fiche_id = ?').all(ficheId);
+    const restoreStock = db.prepare("UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?");
+    for (const l of anciennesLignes) restoreStock.run(l.quantite, l.article_id);
+
+    db.prepare('DELETE FROM mouvements WHERE fiche_id = ?').run(ficheId);
+    db.prepare("DELETE FROM series_numeros WHERE source_type = 'sortie' AND source_id = ?").run(ficheId);
+    db.prepare('DELETE FROM fiche_reception_articles WHERE fiche_id = ?').run(ficheId);
+
+    // 2. Appliquer le nouveau contenu (meme logique que la creation)
+    const insertLigne = db.prepare(`
+      INSERT INTO fiche_reception_articles (fiche_id, article_id, quantite, unite, numero_debut, numero_fin, observation)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    const insertMvt = db.prepare(`
+      INSERT INTO mouvements (article_id, type, quantite, motif, user_id, localite_id, fiche_id, demandeur, date)
+      VALUES (?, 'sortie', ?, 'Envoi (modifie) — Fiche ' || ?, ?, ?, ?, ?, datetime('now','localtime'))
+    `);
+    const updateStock = db.prepare("UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now','localtime') WHERE id = ?");
+
+    for (const art of articles) {
+      const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
+      if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
+
+      if (article.stock_actuel < art.quantite) {
+        throw new Error('Stock insuffisant pour ' + article.nom + ' : ' + article.stock_actuel + ' ' + (article.unite || '') + ' disponible(s), ' + art.quantite + ' demande(s).');
+      }
+
+      if (article.type_article === 'numerote') {
+        if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
+          throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
+        }
+        const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'sortie');
+        if (overlap) throw new Error('Chevauchement : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja envoyee (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
+        recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'sortie', ficheId);
+      }
+
+      const unite = (art.unite || '').trim() || (article.unite || '').trim();
+      insertLigne.run(ficheId, art.article_id, art.quantite, unite, art.numero_debut || null, art.numero_fin || null, art.observation || null);
+      insertMvt.run(art.article_id, art.quantite, fiche.reference, req.user.id, localite_id, ficheId, null);
+      updateStock.run(art.quantite, art.article_id);
+    }
+
+    db.prepare("UPDATE fiches_reception SET localite_id = ?, notes = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+      .run(localite_id, notes || null, ficheId);
+  });
+
+  try {
+    transaction();
+
+    const ficheMaj = db.prepare(`
+      SELECT fr.*, l.nom as localite_nom, l.type as localite_type, l.pays as localite_pays, l.est_service as localite_service
+      FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id WHERE fr.id = ?
+    `).get(ficheId);
+    const lignes = db.prepare(`
+      SELECT fra.*, a.nom as article_nom, COALESCE(NULLIF(TRIM(fra.unite), ''), a.unite) as unite
+      FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
+    `).all(ficheId);
+
+    try {
+      const pdfPath = await generateFichePDF(ficheMaj, lignes);
+      db.prepare("UPDATE fiches_reception SET fichier_path = ?, updated_at = datetime('now','localtime') WHERE id = ?").run(pdfPath, ficheId);
+      ficheMaj.fichier_path = pdfPath;
+    } catch (pdfErr) {
+      console.error('Erreur generation PDF:', pdfErr.message);
+    }
+
+    logAudit(db, req.user.id, req.user.username, 'MODIF_FICHE', 'Sortie ' + fiche.reference + ' — ' + (localite.nom || ''));
+    res.json({ fiche: ficheMaj, lignes });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
 // GET /api/fiches/:id/pdf — telecharger le PDF
 router.get('/:id/pdf', authenticate, (req, res) => {
   const db = req.db;
