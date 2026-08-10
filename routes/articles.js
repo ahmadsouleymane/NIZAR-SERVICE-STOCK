@@ -36,7 +36,7 @@ router.get('/', authenticate, (req, res) => {
 });
 
 // POST /api/articles
-router.post('/', authenticate, (req, res) => {
+router.post('/', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const { reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id, souche_par_localite } = req.body;
 
@@ -103,7 +103,7 @@ router.get('/:id', authenticate, (req, res) => {
 });
 
 // PUT /api/articles/:id
-router.put('/:id', authenticate, (req, res) => {
+router.put('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });

@@ -51,7 +51,7 @@ router.get('/:id', authenticate, (req, res) => {
 });
 
 // PUT /api/fournisseurs/:id
-router.put('/:id', authenticate, (req, res) => {
+router.put('/:id', authenticate, requireAdmin, (req, res) => {
   const db = req.db;
   const f = db.prepare('SELECT * FROM fournisseurs WHERE id = ?').get(req.params.id);
   if (!f) return res.status(404).json({ error: 'Fournisseur introuvable.' });

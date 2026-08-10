@@ -75,6 +75,8 @@ var FichesBesoin = {
       } else if (f.statut === 'revenue') {
         html += '<button class="btn btn-sm btn-info btn-archiver-besoin" data-id="' + f.id + '">Archiver</button>';
       }
+      html += '<button class="btn btn-sm btn-secondary btn-edit-besoin" data-id="' + f.id + '">Modifier</button>' +
+        '<button class="btn btn-sm btn-danger btn-del-besoin" data-id="' + f.id + '">Suppr.</button>';
       html += '</td></tr>';
     }
     html += '</tbody></table></div>';
@@ -88,6 +90,20 @@ var FichesBesoin = {
     });
     el.querySelectorAll('.btn-scan-besoin').forEach(function(btn) {
       btn.addEventListener('click', function() { self._scanRetour(parseInt(this.dataset.id)); });
+    });
+    el.querySelectorAll('.btn-edit-besoin').forEach(function(btn) {
+      btn.addEventListener('click', function() { self._showForm(parseInt(this.dataset.id)); });
+    });
+    el.querySelectorAll('.btn-del-besoin').forEach(function(btn) {
+      btn.addEventListener('click', function() { self._deleteFiche(parseInt(this.dataset.id)); });
+    });
+  },
+
+  _deleteFiche: function(id) {
+    var self = this;
+    UI.confirm('Supprimer cette fiche de besoin ?').then(function(ok) {
+      if (!ok) return;
+      API.deleteFicheBesoin(id).then(function() { UI.toast('Fiche supprimée.', 'success'); self._load(); }).catch(function(err) { UI.toast(err.message, 'error'); });
     });
   },
 
@@ -110,26 +126,39 @@ var FichesBesoin = {
     }, 'image/*,.pdf');
   },
 
-  _showForm: function() {
+  _showForm: function(editId) {
     var self = this;
-    self._lignes = [{ article_id: '', quantite: 1, article_nom: '' }];
-    self._acLignes = [];
+    self._editId = editId || null;
 
-    var body =
-      '<div class="form-group"><label class="form-label">Notes</label><input type="text" class="form-input" id="besoin-notes" placeholder="Optionnel"></div>' +
-      '<div class="flex-between mb-sm"><strong>Articles souhaites</strong><button class="btn btn-sm btn-secondary" id="btn-add-besoin-line">+ Ajouter</button></div>' +
-      '<div id="lignes-besoin"></div>';
-
-    UI.modal('Nouvelle fiche de besoin', body, [
-      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
-      { label: 'Creer', cls: 'btn-primary', callback: function(m) { self._save(m); } }
-    ]);
-
-    document.getElementById('btn-add-besoin-line').addEventListener('click', function() {
-      self._lignes.push({ article_id: '', quantite: 1, article_nom: '' });
+    var build = function() {
+      self._acLignes = [];
+      var body =
+        '<div class="form-group"><label class="form-label">Notes</label><input type="text" class="form-input" id="besoin-notes" placeholder="Optionnel" value="' + UI.escapeHtml(self._editNotes || '') + '"></div>' +
+        '<div class="flex-between mb-sm"><strong>Articles souhaites</strong><button class="btn btn-sm btn-secondary" id="btn-add-besoin-line">+ Ajouter</button></div>' +
+        '<div id="lignes-besoin"></div>';
+      UI.modal(editId ? 'Modifier la fiche de besoin' : 'Nouvelle fiche de besoin', body, [
+        { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+        { label: editId ? 'Enregistrer' : 'Creer', cls: 'btn-primary', callback: function(m) { self._save(m); } }
+      ]);
+      document.getElementById('btn-add-besoin-line').addEventListener('click', function() {
+        self._lignes.push({ article_id: '', quantite: 1, article_nom: '' });
+        self._refreshLignes();
+      });
       self._refreshLignes();
-    });
-    self._refreshLignes();
+    };
+
+    if (editId) {
+      API.getFicheBesoin(editId).then(function(data) {
+        self._editNotes = data.fiche.notes || '';
+        self._lignes = (data.lignes || []).map(function(l) { return { article_id: l.article_id, quantite: l.quantite, article_nom: l.article_nom || '' }; });
+        if (!self._lignes.length) self._lignes = [{ article_id: '', quantite: 1, article_nom: '' }];
+        build();
+      }).catch(function(err) { UI.toast(err.message, 'error'); });
+    } else {
+      self._editNotes = '';
+      self._lignes = [{ article_id: '', quantite: 1, article_nom: '' }];
+      build();
+    }
   },
 
   _refreshLignes: function() {
@@ -193,9 +222,13 @@ var FichesBesoin = {
     }
 
     var notes = document.getElementById('besoin-notes').value.trim() || null;
-    API.createFicheBesoin({ notes: notes, articles: articles })
+    var promise = self._editId
+      ? API.updateFicheBesoin(self._editId, { notes: notes, articles: articles })
+      : API.createFicheBesoin({ notes: notes, articles: articles });
+    promise
       .then(function(data) {
-        UI.toast('Fiche de besoin creee : ' + data.fiche.reference, 'success');
+        UI.toast(self._editId ? 'Fiche de besoin modifiée.' : ('Fiche de besoin creee : ' + data.fiche.reference), 'success');
+        self._editId = null;
         modal.close();
         self._load();
       })

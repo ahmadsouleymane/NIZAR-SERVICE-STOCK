@@ -51,25 +51,30 @@
     var drawerNav = document.getElementById('drawer-nav');
     var bottomNav = document.getElementById('bottom-nav');
 
+    // L'assistant ne voit pas les rapports ni les fiches de besoin (admin only).
+    var isAssistant = (user && user.role === 'assistant');
+    var HIDDEN_ASSISTANT = ['rapports', 'fiches_besoin'];
+    function allowed(id) { return !(isAssistant && HIDDEN_ASSISTANT.indexOf(id) !== -1); }
+
     // Drawer : tous les items
     var drawerHtml = '';
     drawerHtml += '<div class="drawer-section-label">Principal</div>';
     var mainIds = ['dashboard', 'articles', 'inventaire', 'fiches', 'entrees', 'mouvements'];
     for (var i = 0; i < mainIds.length; i++) {
       var item = findItem(mainIds[i]);
-      if (item) drawerHtml += '<a href="#' + item.id + '" data-page="' + item.id + '">' + item.icon + '<span>' + item.label + '</span></a>';
+      if (item && allowed(item.id)) drawerHtml += '<a href="#' + item.id + '" data-page="' + item.id + '">' + item.icon + '<span>' + item.label + '</span></a>';
     }
     drawerHtml += '<div class="drawer-section-label">Operations</div>';
     var opIds = ['retours', 'fiches_besoin', 'souches', 'billets', 'comptage'];
     for (var o = 0; o < opIds.length; o++) {
       var oitem = findItem(opIds[o]);
-      if (oitem) drawerHtml += '<a href="#' + oitem.id + '" data-page="' + oitem.id + '">' + oitem.icon + '<span>' + oitem.label + '</span></a>';
+      if (oitem && allowed(oitem.id)) drawerHtml += '<a href="#' + oitem.id + '" data-page="' + oitem.id + '">' + oitem.icon + '<span>' + oitem.label + '</span></a>';
     }
     drawerHtml += '<div class="drawer-section-label">Gestion</div>';
     var secIds = ['fournisseurs', 'rapports', 'parametres'];
     for (var j = 0; j < secIds.length; j++) {
       var sitem = findItem(secIds[j]);
-      if (sitem) drawerHtml += '<a href="#' + sitem.id + '" data-page="' + sitem.id + '">' + sitem.icon + '<span>' + sitem.label + '</span></a>';
+      if (sitem && allowed(sitem.id)) drawerHtml += '<a href="#' + sitem.id + '" data-page="' + sitem.id + '">' + sitem.icon + '<span>' + sitem.label + '</span></a>';
     }
     drawerNav.innerHTML = drawerHtml;
 
@@ -135,8 +140,11 @@
       '<button type="button" id="quick-sheet-close" class="btn btn-icon" aria-label="Fermer">&times;</button></div>' +
       '<div class="quick-sheet-section">Créer</div>' +
       '<div class="quick-sheet-grid">';
+    var isAssistantQA = (user && user.role === 'assistant');
     for (var i = 0; i < QUICK_ACTIONS.length; i++) {
       var qa = QUICK_ACTIONS[i];
+      // L'assistant ne voit pas rapports / fiches de besoin.
+      if (isAssistantQA && (qa.page === 'rapports' || qa.page === 'fiches_besoin')) continue;
       var icon = qa.open
         ? '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>'
         : '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>';
@@ -213,6 +221,10 @@
   }
 
   function navigate(page) {
+    // L'assistant n'accede pas aux rapports / fiches de besoin, meme par URL directe.
+    if (user && user.role === 'assistant' && (page === 'rapports' || page === 'fiches_besoin')) {
+      page = 'dashboard';
+    }
     // Fermer toute modale ouverte : elle ne doit pas survivre au changement de page
     var overlay = document.getElementById('modal-overlay');
     if (overlay) overlay.style.display = 'none';

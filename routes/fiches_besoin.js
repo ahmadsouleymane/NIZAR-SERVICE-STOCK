@@ -99,6 +99,42 @@ router.post('/', authenticate, (req, res) => {
   res.status(201).json({ fiche });
 });
 
+// PUT /api/fiches-besoin/:id — modifier une fiche de besoin (notes + articles).
+router.put('/:id', authenticate, (req, res) => {
+  const db = req.db;
+  const fiche = db.prepare('SELECT * FROM fiches_besoin WHERE id = ?').get(req.params.id);
+  if (!fiche) return res.status(404).json({ error: 'Fiche de besoin introuvable.' });
+
+  const { notes, articles } = req.body;
+  if (!articles || !articles.length) return res.status(400).json({ error: 'Au moins un article requis.' });
+  for (let i = 0; i < articles.length; i++) {
+    const qte = parseInt(articles[i].quantite, 10);
+    if (isNaN(qte) || qte <= 0) return res.status(400).json({ error: 'Quantite invalide ligne ' + (i + 1) + '.' });
+    articles[i].quantite = qte;
+  }
+
+  try {
+    const transaction = db.transaction(() => {
+      db.prepare("UPDATE fiches_besoin SET notes = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+        .run(notes || null, req.params.id);
+      db.prepare('DELETE FROM fiche_besoin_articles WHERE fiche_id = ?').run(req.params.id);
+      const insertLigne = db.prepare('INSERT INTO fiche_besoin_articles (fiche_id, article_id, quantite, observation) VALUES (?, ?, ?, ?)');
+      for (const art of articles) {
+        const article = db.prepare('SELECT id FROM articles WHERE id = ?').get(art.article_id);
+        if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
+        insertLigne.run(req.params.id, art.article_id, art.quantite, art.observation || null);
+      }
+    });
+    transaction();
+  } catch (err) {
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
+
+  logAudit(db, req.user.id, req.user.username, 'MODIF_FICHE_BESOIN', fiche.reference || String(req.params.id));
+  res.json({ fiche: db.prepare('SELECT * FROM fiches_besoin WHERE id = ?').get(req.params.id) });
+});
+
 // PATCH /api/fiches-besoin/:id/statut — transmise | archivee
 router.patch('/:id/statut', authenticate, (req, res) => {
   const db = req.db;

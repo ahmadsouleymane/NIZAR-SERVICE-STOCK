@@ -155,6 +155,60 @@ router.get('/anomalies', authenticate, requireAdmin, (req, res) => {
   res.json({ anomalies });
 });
 
+// GET /api/mouvements/:id/detail — vue complete d'un mouvement : l'article, et la
+// fiche liee (sortie ou entree) avec sa reference, ses lignes et son PDF, pour tout
+// voir au clic sans aller chercher ailleurs.
+router.get('/:id/detail', authenticate, (req, res) => {
+  const db = req.db;
+  const mvt = db.prepare(`
+    SELECT m.*, a.nom as article_nom, a.reference as article_reference, a.unite, a.type_article,
+      f.nom as fournisseur_nom, l.nom as localite_nom, u.username as cree_par
+    FROM mouvements m
+    JOIN articles a ON m.article_id = a.id
+    LEFT JOIN fournisseurs f ON m.fournisseur_id = f.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    LEFT JOIN users u ON m.user_id = u.id
+    WHERE m.id = ?
+  `).get(req.params.id);
+  if (!mvt) return res.status(404).json({ error: 'Mouvement introuvable.' });
+
+  const detail = { mouvement: mvt, source: null };
+
+  if (mvt.fiche_id) {
+    // Sortie (fiche de reception)
+    const fiche = db.prepare(`
+      SELECT fr.*, l.nom as localite_nom, u.username as cree_par
+      FROM fiches_reception fr LEFT JOIN localites l ON fr.localite_id = l.id
+      LEFT JOIN users u ON fr.user_id = u.id WHERE fr.id = ?
+    `).get(mvt.fiche_id);
+    if (fiche) {
+      const lignes = db.prepare(`
+        SELECT fra.quantite, fra.numero_debut, fra.numero_fin, a.nom as article_nom,
+          COALESCE((SELECT label FROM unites WHERE code = COALESCE(NULLIF(TRIM(fra.unite),''), a.unite)), NULLIF(TRIM(fra.unite),''), a.unite) as unite
+        FROM fiche_reception_articles fra LEFT JOIN articles a ON fra.article_id = a.id WHERE fra.fiche_id = ?
+      `).all(mvt.fiche_id);
+      detail.source = { kind: 'sortie', fiche, lignes, pdf_url: '/api/fiches/' + fiche.id + '/pdf' };
+    }
+  } else if (mvt.entree_id) {
+    // Entree (fiche d'entree fournisseur)
+    const fiche = db.prepare(`
+      SELECT fe.*, f.nom as fournisseur_nom, u.username as cree_par
+      FROM fiches_entree fe LEFT JOIN fournisseurs f ON fe.fournisseur_id = f.id
+      LEFT JOIN users u ON fe.user_id = u.id WHERE fe.id = ?
+    `).get(mvt.entree_id);
+    if (fiche) {
+      const lignes = db.prepare(`
+        SELECT fea.quantite, fea.numero_debut, fea.numero_fin, a.nom as article_nom, a.unite
+        FROM fiche_entree_articles fea LEFT JOIN articles a ON fea.article_id = a.id WHERE fea.fiche_id = ?
+      `).all(mvt.entree_id);
+      const photos = db.prepare('SELECT fichier_path, type FROM fiche_entree_photos WHERE fiche_id = ?').all(mvt.entree_id);
+      detail.source = { kind: 'entree', fiche, lignes, photos, pdf_url: fiche.fichier_path ? ('/api/entrees/' + fiche.id + '/pdf') : null };
+    }
+  }
+
+  res.json(detail);
+});
+
 // GET /api/mouvements/anomalies-souches — mouvements d'articles numerotes dont la
 // plage de souches est PRESENTE mais INVALIDE : debut > fin, ou etendue non multiple
 // exact de la taille de lot de la categorie. Pour correction manuelle admin.

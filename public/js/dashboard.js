@@ -1,7 +1,11 @@
 // public/js/dashboard.js
 var Dashboard = {
   render: function(container) {
+    var demandesCard = UI.isAdmin()
+      ? '<div class="card" id="demandes-card" style="display:none"><div class="card-header"><h3 class="card-title">Demandes en attente</h3></div><div id="demandes-list"></div></div>'
+      : '';
     container.innerHTML = '<div class="kpi-grid" id="kpi-grid">' + UI.renderSkeleton(4) + '</div>' +
+      demandesCard +
       '<div class="card"><div class="card-header"><h3 class="card-title">Derniers mouvements</h3></div><div id="recent-mvts">' + UI.renderSkeleton(5) + '</div></div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Dernières entrées fournisseur</h3></div><div id="recent-entrees">' + UI.renderSkeleton(4) + '</div></div>' +
       '<div class="card"><div class="card-header"><h3 class="card-title">Alertes stock bas</h3></div><div id="top-alertes">' + UI.renderSkeleton(3) + '</div></div>';
@@ -16,6 +20,105 @@ var Dashboard = {
       .catch(function(err) {
         container.innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
       });
+
+    if (UI.isAdmin()) Dashboard._loadDemandes();
+  },
+
+  // Suppression selon le type de cible (utilise les endpoints admin existants).
+  _executeurs: {
+    sortie: function(id) { return API.deleteFiche(id); },
+    entree: function(id) { return API.deleteEntree(id); },
+    comptage: function(id) { return API.deleteInventaire(id); },
+    inventaire: function(id) { return API.deleteInventaire(id); },
+    article: function(id) { return API.deleteArticle(id); },
+    fournisseur: function(id) { return API.deleteFournisseur(id); },
+    localite: function(id) { return API.deleteLocalite(id); },
+    categorie: function(id) { return API.deleteCategory(id); },
+    unite: function(id) { return API.deleteUnite(id); },
+    fiche_besoin: function(id) { return API.deleteFicheBesoin(id); }
+  },
+  // Page a ouvrir pour une demande de modification, par type de cible.
+  _pageCible: {
+    sortie: 'fiches', entree: 'entrees', comptage: 'comptage', inventaire: 'comptage',
+    article: 'articles', fournisseur: 'fournisseurs', localite: 'parametres',
+    categorie: 'parametres', unite: 'parametres', fiche_besoin: 'fiches_besoin'
+  },
+
+  _loadDemandes: function() {
+    API.getDemandes({ statut: 'en_attente' })
+      .then(function(data) { Dashboard._renderDemandes(data.demandes || []); })
+      .catch(function() {});
+  },
+
+  _renderDemandes: function(demandes) {
+    var card = document.getElementById('demandes-card');
+    var el = document.getElementById('demandes-list');
+    if (!card || !el) return;
+    if (!demandes.length) { card.style.display = 'none'; return; }
+    card.style.display = '';
+
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Demandeur</th><th>Type</th><th>Élément</th><th>Raison</th><th>Date</th><th>Actions</th>' +
+      '</tr></thead><tbody>';
+    for (var i = 0; i < demandes.length; i++) {
+      var d = demandes[i];
+      var badge = d.type === 'suppression' ? '<span class="badge badge-danger">Suppression</span>' : '<span class="badge badge-warning">Modification</span>';
+      html += '<tr>' +
+        '<td><strong>' + UI.escapeHtml(d.demandeur || d.username || '-') + '</strong></td>' +
+        '<td>' + badge + '</td>' +
+        '<td>' + UI.escapeHtml(d.cible_label || d.cible_type) + '</td>' +
+        '<td class="text-sm">' + UI.escapeHtml(d.note || '') + '</td>' +
+        '<td class="text-sm">' + UI.formatDate(d.date_creation) + '</td>' +
+        '<td class="actions">' +
+        (d.type === 'suppression'
+          ? '<button class="btn btn-sm btn-danger btn-dem-exec" data-id="' + d.id + '">Exécuter</button>'
+          : '<button class="btn btn-sm btn-primary btn-dem-modif" data-id="' + d.id + '">Aller modifier</button>') +
+        '<button class="btn btn-sm btn-secondary btn-dem-refuse" data-id="' + d.id + '">Refuser</button>' +
+        '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+
+    el.querySelectorAll('.btn-dem-exec').forEach(function(btn) {
+      btn.addEventListener('click', function() { Dashboard._executerDemande(demandes.find(function(x){ return x.id === parseInt(btn.dataset.id, 10); })); });
+    });
+    el.querySelectorAll('.btn-dem-modif').forEach(function(btn) {
+      btn.addEventListener('click', function() { Dashboard._modifierDemande(demandes.find(function(x){ return x.id === parseInt(btn.dataset.id, 10); })); });
+    });
+    el.querySelectorAll('.btn-dem-refuse').forEach(function(btn) {
+      btn.addEventListener('click', function() { Dashboard._refuserDemande(parseInt(btn.dataset.id, 10)); });
+    });
+  },
+
+  _executerDemande: function(d) {
+    if (!d) return;
+    var fn = Dashboard._executeurs[d.cible_type];
+    if (!fn || !d.cible_id) { UI.toast('Suppression automatique non disponible pour ce type — à faire manuellement.', 'warning'); return; }
+    UI.confirm('Exécuter la suppression demandée de « ' + (d.cible_label || d.cible_type) + ' » ?').then(function(ok) {
+      if (!ok) return;
+      fn(d.cible_id)
+        .then(function() { return API.accepterDemande(d.id); })
+        .then(function() { UI.toast('Suppression effectuée, demande acceptée.', 'success'); Dashboard._loadDemandes(); })
+        .catch(function(err) { UI.toast(err.message, 'error'); });
+    });
+  },
+
+  _modifierDemande: function(d) {
+    if (!d) return;
+    var page = Dashboard._pageCible[d.cible_type];
+    // Marque la demande acceptee puis emmene l'admin sur la page concernee.
+    API.accepterDemande(d.id).catch(function() {});
+    UI.toast('Demande acceptée — ouvrez l\'élément à modifier.', 'info');
+    if (page) window.location.hash = page;
+  },
+
+  _refuserDemande: function(id) {
+    UI.confirm('Refuser cette demande ?').then(function(ok) {
+      if (!ok) return;
+      API.refuserDemande(id, '')
+        .then(function() { UI.toast('Demande refusée.', 'success'); Dashboard._loadDemandes(); })
+        .catch(function(err) { UI.toast(err.message, 'error'); });
+    });
   },
 
   _renderKPI: function(kpi) {

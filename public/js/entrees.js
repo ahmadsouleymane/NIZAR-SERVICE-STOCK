@@ -17,11 +17,9 @@ var Entrees = {
       '<button class="btn btn-primary" id="btn-new-entree">' +
       '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>' +
       ' Nouvelle entrée</button>' +
-      '<button class="btn btn-secondary btn-sm" id="btn-import-entrees" style="background:var(--color-accent);color:#fff;border:none">' +
-      '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>' +
-      ' Importer Excel</button>' +
       '</div>' +
       '<div class="filter-bar">' +
+      '<input type="text" class="form-input" id="entree-search" placeholder="Rechercher (référence, n° BL, facture, fournisseur...)" style="min-width:240px">' +
       '<select class="form-select" id="entree-statut"><option value="">Tous statuts</option><option value="validee">Validée</option><option value="archivee">Archivée</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-entrees-refresh">Actualiser</button>' +
       '</div>' +
@@ -39,7 +37,9 @@ var Entrees = {
     document.getElementById('btn-new-entree').addEventListener('click', function() { self._showForm(); });
     document.getElementById('entree-statut').addEventListener('change', function() { self._load(true); });
     document.getElementById('btn-entrees-refresh').addEventListener('click', function() { self._load(true); });
-    document.getElementById('btn-import-entrees').addEventListener('click', function() { self._importExcel(); });
+    var searchEl = document.getElementById('entree-search');
+    var t = null;
+    searchEl.addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { self._load(true); }, 350); });
   },
 
   _load: function(reset) {
@@ -48,7 +48,9 @@ var Entrees = {
 
     var params = { offset: this._offset };
     var s = document.getElementById('entree-statut').value;
+    var q = document.getElementById('entree-search');
     if (s) params.statut = s;
+    if (q && q.value.trim()) params.search = q.value.trim();
 
     API.getEntrees(params).then(function(data) {
       if (reset) self._all = data.fiches;
@@ -104,6 +106,8 @@ var Entrees = {
       if (UI.isAdmin()) {
         html += '<button class="btn btn-sm btn-secondary btn-edit-entree" data-id="' + f.id + '">Modifier</button>' +
           '<button class="btn btn-sm btn-danger btn-del-entree" data-id="' + f.id + '">Suppr.</button>';
+      } else if (UI.isAssistant() && !estBrouillon) {
+        html += '<button class="btn btn-sm btn-secondary btn-demande-entree" data-id="' + f.id + '" data-ref="' + UI.escapeHtml(f.reference || '') + '" data-fourn="' + UI.escapeHtml(f.fournisseur_nom || '') + '">Demander modif/suppr.</button>';
       }
       html +=
         '</td></tr>';
@@ -111,7 +115,7 @@ var Entrees = {
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    var btns = el.querySelectorAll('.btn-view-entree, .btn-photo-entree, .btn-del-entree, .btn-continue-entree, .btn-edit-entree');
+    var btns = el.querySelectorAll('.btn-view-entree, .btn-photo-entree, .btn-del-entree, .btn-continue-entree, .btn-edit-entree, .btn-demande-entree');
     for (var j = 0; j < btns.length; j++) {
       btns[j].addEventListener('click', function() {
         var id = parseInt(this.getAttribute('data-id'));
@@ -120,8 +124,19 @@ var Entrees = {
         else if (this.classList.contains('btn-edit-entree')) self._showEditForm(id);
         else if (this.classList.contains('btn-del-entree')) self._deleteEntree(id);
         else if (this.classList.contains('btn-continue-entree')) self._continueDraft(id);
+        else if (this.classList.contains('btn-demande-entree')) self._demanderEntree(id, this.getAttribute('data-ref'), this.getAttribute('data-fourn'));
       });
     }
+  },
+
+  // Assistant : demander à l'admin la modification/suppression d'une entrée.
+  _demanderEntree: function(id, ref, fourn) {
+    var label = 'Entrée ' + (ref || '#' + id) + (fourn ? ' — ' + fourn : '');
+    UI.modal('Demande sur ' + UI.escapeHtml(label), '<p class="text-sm text-muted mb-sm">Que souhaitez-vous demander à l\'administrateur ?</p>', [
+      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+      { label: 'Modification', cls: 'btn-primary', callback: function(m) { m.close(); UI.demanderAdmin('modification', 'entree', id, label); } },
+      { label: 'Suppression', cls: 'btn-danger', callback: function(m) { m.close(); UI.demanderAdmin('suppression', 'entree', id, label); } }
+    ]);
   },
 
   _showForm: function() {

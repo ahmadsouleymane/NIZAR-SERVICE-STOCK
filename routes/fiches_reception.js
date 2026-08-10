@@ -25,7 +25,7 @@ function generateRef(db) {
 // GET /api/fiches — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
-  const { statut, localite_id, debut, fin, offset } = req.query;
+  const { statut, localite_id, debut, fin, offset, search } = req.query;
 
   let query = `
     SELECT fr.*, l.nom as localite_nom, l.est_service as localite_service, u.username as cree_par,
@@ -41,6 +41,12 @@ router.get('/', authenticate, (req, res) => {
   if (localite_id) { query += ' AND fr.localite_id = ?'; params.push(localite_id); }
   if (debut) { query += ' AND fr.date_creation >= ?'; params.push(debut); }
   if (fin) { query += ' AND fr.date_creation <= ?'; params.push(fin + ' 23:59:59'); }
+  // Recherche libre : reference, n° facture, ou nom de destination.
+  if (search && String(search).trim()) {
+    const s = '%' + String(search).trim() + '%';
+    query += ' AND (fr.reference LIKE ? OR fr.numero_facture LIKE ? OR l.nom LIKE ?)';
+    params.push(s, s, s);
+  }
 
   const limit = 50;
   const off = parseInt(offset, 10) || 0;

@@ -11,6 +11,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const initDB = require('./database/init');
 const paths = require('./services/paths');
+const { authenticate, requireAdmin } = require('./middleware/auth');
 
 const app = express();
 // Derrière le proxy Render : nécessaire pour express-rate-limit (X-Forwarded-For).
@@ -96,13 +97,13 @@ app.use('/api/articles', require('./routes/articles'));
 app.use('/api/categories', require('./routes/categories'));
 app.use('/api/mouvements', require('./routes/mouvements'));
 app.use('/api/fournisseurs', require('./routes/fournisseurs'));
-app.use('/api/rapports', require('./routes/rapports'));
+app.use('/api/rapports', authenticate, requireAdmin, require('./routes/rapports'));
 app.use('/api/users', require('./routes/users'));
 app.use('/api/localites', require('./routes/localites'));
 app.use('/api/fiches', require('./routes/fiches_reception'));
 app.use('/api/retours', require('./routes/retours'));
 app.use('/api/entrees', require('./routes/entrees'));
-app.use('/api/fiches-besoin', require('./routes/fiches_besoin'));
+app.use('/api/fiches-besoin', authenticate, requireAdmin, require('./routes/fiches_besoin'));
 app.use('/api/series', require('./routes/series'));
 app.use('/api/inventaires', require('./routes/inventaires'));
 app.use('/api/backup', require('./routes/backup'));
@@ -113,6 +114,7 @@ app.use('/api/alertes', require('./routes/alertes'));
 app.use('/api/recherche', require('./routes/recherche'));
 app.use('/api/billets', require('./routes/billets'));
 app.use('/api/unites', require('./routes/unites'));
+app.use('/api/demandes', require('./routes/demandes'));
 
 // Servir les uploads (repertoire configurable, sur le disque persistant en deploiement)
 app.use('/uploads', (req, res, next) => {

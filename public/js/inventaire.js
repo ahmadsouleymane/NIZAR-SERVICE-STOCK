@@ -31,14 +31,22 @@ var Inventaire = {
     var el = document.getElementById('inventaire-table');
     if (!inventaires || !inventaires.length) { el.innerHTML = UI.renderEmptyState('Aucun comptage effectue', 'Nouveau comptage', 'btn-new-inventaire'); return; }
 
+    var self = this;
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Date</th><th>Article</th><th>Stock theorique</th><th>Compte</th><th>Ecart</th><th>Notes</th><th>Par</th>' +
+      '<th>Date</th><th>Article</th><th>Stock theorique</th><th>Compte</th><th>Ecart</th><th>Notes</th><th>Par</th><th>Actions</th>' +
       '</tr></thead><tbody>';
 
     for (var i = 0; i < inventaires.length; i++) {
       var inv = inventaires[i];
       var ecartCls = inv.ecart > 0 ? 'text-success' : (inv.ecart < 0 ? 'text-danger' : 'text-muted');
       var ecartLabel = inv.ecart === 0 ? '0 (exact)' : (inv.ecart > 0 ? '+' + inv.ecart : String(inv.ecart));
+      var actions = '';
+      if (UI.isAdmin()) {
+        actions = '<button class="btn btn-sm btn-secondary btn-edit-inv" data-id="' + inv.id + '" data-qte="' + inv.quantite_comptee + '" data-notes="' + UI.escapeHtml(inv.notes || '') + '" data-nom="' + UI.escapeHtml(inv.article_nom || '') + '">Modifier</button>' +
+          '<button class="btn btn-sm btn-danger btn-del-inv" data-id="' + inv.id + '">Suppr.</button>';
+      } else if (UI.isAssistant()) {
+        actions = '<button class="btn btn-sm btn-secondary btn-demande-inv" data-id="' + inv.id + '" data-nom="' + UI.escapeHtml(inv.article_nom || '') + '">Demander modif/suppr.</button>';
+      }
       html += '<tr>' +
         '<td>' + UI.formatDate(inv.date_inventaire) + '</td>' +
         '<td><strong>' + UI.escapeHtml(inv.article_nom || '-') + '</strong><br><span class="text-sm text-muted">' + UI.escapeHtml(inv.reference || '') + '</span></td>' +
@@ -47,10 +55,55 @@ var Inventaire = {
         '<td><span class="' + ecartCls + '" style="font-weight:700">' + ecartLabel + '</span></td>' +
         '<td>' + UI.escapeHtml(inv.notes || '-') + '</td>' +
         '<td>' + UI.escapeHtml(inv.username || '-') + '</td>' +
+        '<td class="actions">' + actions + '</td>' +
         '</tr>';
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
+
+    el.querySelectorAll('.btn-edit-inv').forEach(function(b) {
+      b.addEventListener('click', function() { self._showEditForm(parseInt(this.dataset.id, 10), parseInt(this.dataset.qte, 10), this.dataset.notes || '', this.dataset.nom || ''); });
+    });
+    el.querySelectorAll('.btn-del-inv').forEach(function(b) {
+      b.addEventListener('click', function() { self._deleteInventaire(parseInt(this.dataset.id, 10)); });
+    });
+    el.querySelectorAll('.btn-demande-inv').forEach(function(b) {
+      b.addEventListener('click', function() {
+        var id = parseInt(this.dataset.id, 10); var nom = this.dataset.nom || '';
+        var label = 'Comptage — ' + nom;
+        UI.modal('Demande sur ' + UI.escapeHtml(label), '<p class="text-sm text-muted mb-sm">Que souhaitez-vous demander à l\'administrateur ?</p>', [
+          { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+          { label: 'Modification', cls: 'btn-primary', callback: function(m) { m.close(); UI.demanderAdmin('modification', 'comptage', id, label); } },
+          { label: 'Suppression', cls: 'btn-danger', callback: function(m) { m.close(); UI.demanderAdmin('suppression', 'comptage', id, label); } }
+        ]);
+      });
+    });
+  },
+
+  _showEditForm: function(id, qte, notes, nom) {
+    var self = this;
+    var html = '<p class="text-sm text-muted mb-sm">' + UI.escapeHtml(nom) + '</p>' +
+      '<div class="form-group"><label class="form-label">Quantité comptée *</label><input type="number" class="form-input" id="inv-edit-qte" min="0" value="' + qte + '"></div>' +
+      '<div class="form-group"><label class="form-label">Notes</label><input type="text" class="form-input" id="inv-edit-notes" value="' + UI.escapeHtml(notes) + '"></div>' +
+      '<p class="text-sm text-muted">Le stock sera réajusté selon le nouvel écart.</p>';
+    UI.modal('Modifier le comptage', html, [
+      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+      { label: 'Enregistrer', cls: 'btn-primary', callback: function(m) {
+        var q = parseInt(document.getElementById('inv-edit-qte').value, 10);
+        if (isNaN(q) || q < 0) { UI.toast('Quantité invalide.', 'error'); return; }
+        API.updateInventaire(id, { quantite_comptee: q, notes: document.getElementById('inv-edit-notes').value.trim() || null })
+          .then(function() { UI.toast('Comptage modifié, stock réajusté.', 'success'); m.close(); self._load(); })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
+      } }
+    ]);
+  },
+
+  _deleteInventaire: function(id) {
+    var self = this;
+    UI.confirm('Supprimer ce comptage ? Le stock sera rétabli (annulation de l\'écart).').then(function(ok) {
+      if (!ok) return;
+      API.deleteInventaire(id).then(function() { UI.toast('Comptage supprimé, stock rétabli.', 'success'); self._load(); }).catch(function(err) { UI.toast(err.message, 'error'); });
+    });
   },
 
   _showForm: function() {

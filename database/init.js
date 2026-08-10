@@ -240,6 +240,25 @@ function initDB(dbPath) {
       details TEXT,
       date TEXT DEFAULT (datetime('now','localtime'))
     );
+
+    -- Demandes assistant -> admin : suppression/modification d'un element que
+    -- l'assistant n'a pas le droit de faire lui-meme. L'admin accepte ou refuse.
+    CREATE TABLE IF NOT EXISTS demandes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      username TEXT,
+      type TEXT NOT NULL CHECK(type IN ('suppression','modification')),
+      cible_type TEXT NOT NULL,
+      cible_id INTEGER,
+      cible_label TEXT,
+      note TEXT NOT NULL,
+      statut TEXT NOT NULL DEFAULT 'en_attente' CHECK(statut IN ('en_attente','acceptee','refusee')),
+      traite_par INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      traite_par_nom TEXT,
+      reponse_note TEXT,
+      date_creation TEXT DEFAULT (datetime('now','localtime')),
+      date_traitement TEXT
+    );
   `);
 
   // Migration : ajouter les colonnes manquantes aux tables existantes (bases créées avant V2)

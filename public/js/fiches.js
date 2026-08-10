@@ -22,6 +22,7 @@ var Fiches = {
       '<button class="btn btn-primary" id="btn-new-envoi"><svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Nouvelle sortie</button>' +
       '</div>' +
       '<div class="filter-bar">' +
+      '<input type="text" class="form-input" id="fiche-search" placeholder="Rechercher (référence, n° facture, destination...)" style="min-width:240px">' +
       '<select class="form-select" id="fiche-statut"><option value="">Tous</option><option value="envoyee">Envoyée</option><option value="retournee">Retournée</option><option value="archivee">Archivée</option></select>' +
       '<select class="form-select" id="fiche-localite"><option value="">Toutes destinations</option></select>' +
       '<button class="btn btn-secondary btn-sm" id="btn-fiches-refresh">Actualiser</button>' +
@@ -39,6 +40,9 @@ var Fiches = {
     document.getElementById('fiche-statut').addEventListener('change', function() { self._load(true); });
     document.getElementById('fiche-localite').addEventListener('change', function() { self._load(true); });
     document.getElementById('btn-fiches-refresh').addEventListener('click', function() { self._load(true); });
+    var searchEl = document.getElementById('fiche-search');
+    var t = null;
+    searchEl.addEventListener('input', function() { clearTimeout(t); t = setTimeout(function() { self._load(true); }, 350); });
   },
 
   _loadLocalites: function() {
@@ -63,8 +67,10 @@ var Fiches = {
     var params = { offset: this._offset };
     var s = document.getElementById('fiche-statut').value;
     var l = document.getElementById('fiche-localite').value;
+    var q = document.getElementById('fiche-search');
     if (s) params.statut = s;
     if (l) params.localite_id = l;
+    if (q && q.value.trim()) params.search = q.value.trim();
 
     API.getFiches(params).then(function(data) {
       if (reset) self._all = data.fiches;
@@ -130,6 +136,8 @@ var Fiches = {
       if (UI.isAdmin()) {
         html += '<button class="btn btn-sm btn-secondary btn-edit-fiche" data-id="' + f.id + '">Modifier</button>' +
           '<button class="btn btn-sm btn-danger btn-del-fiche" data-id="' + f.id + '">Suppr.</button>';
+      } else if (UI.isAssistant()) {
+        html += '<button class="btn btn-sm btn-secondary btn-demande-fiche" data-id="' + f.id + '" data-ref="' + UI.escapeHtml(f.reference) + '" data-loc="' + UI.escapeHtml(f.localite_nom || '') + '">Demander modif/suppr.</button>';
       }
 
       html += '</td></tr>';
@@ -137,7 +145,7 @@ var Fiches = {
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-archive-fiche', 'btn-print-fiche', 'btn-edit-fiche', 'btn-del-fiche'].forEach(function(cls) {
+    ['btn-view-fiche', 'btn-dl-pdf', 'btn-upload-scan', 'btn-archive-fiche', 'btn-print-fiche', 'btn-edit-fiche', 'btn-del-fiche', 'btn-demande-fiche'].forEach(function(cls) {
       var btns = el.querySelectorAll('.' + cls);
       for (var j = 0; j < btns.length; j++) {
         btns[j].addEventListener('click', function() {
@@ -149,9 +157,20 @@ var Fiches = {
           else if (this.classList.contains('btn-print-fiche')) self._imprimerPDF(id);
           else if (this.classList.contains('btn-edit-fiche')) self._showEnvoiForm(id);
           else if (this.classList.contains('btn-del-fiche')) self._deleteFiche(id);
+          else if (this.classList.contains('btn-demande-fiche')) self._demanderFiche(id, this.getAttribute('data-ref'), this.getAttribute('data-loc'));
         });
       }
     });
+  },
+
+  // Assistant : demander à l'admin la modification ou la suppression d'une sortie.
+  _demanderFiche: function(id, ref, loc) {
+    var label = 'Sortie ' + (ref || '#' + id) + (loc ? ' → ' + loc : '');
+    UI.modal('Demande sur ' + UI.escapeHtml(label), '<p class="text-sm text-muted mb-sm">Que souhaitez-vous demander à l\'administrateur ?</p>', [
+      { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
+      { label: 'Modification', cls: 'btn-primary', callback: function(m) { m.close(); UI.demanderAdmin('modification', 'sortie', id, label); } },
+      { label: 'Suppression', cls: 'btn-danger', callback: function(m) { m.close(); UI.demanderAdmin('suppression', 'sortie', id, label); } }
+    ]);
   },
 
   // ===== Formulaire de sortie =====

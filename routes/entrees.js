@@ -52,13 +52,19 @@ function buildLignesForPDF(db, fiche) {
 // GET /api/entrees — liste
 router.get('/', authenticate, (req, res) => {
   const db = req.db;
-  const { fournisseur_id, statut, debut, fin, offset } = req.query;
+  const { fournisseur_id, statut, debut, fin, offset, search } = req.query;
   let where = 'WHERE 1=1';
   const params = [];
   if (fournisseur_id) { where += ' AND fe.fournisseur_id = ?'; params.push(fournisseur_id); }
   if (statut) { where += ' AND fe.statut = ?'; params.push(statut); }
   if (debut) { where += ' AND fe.date_entree >= ?'; params.push(debut); }
   if (fin) { where += ' AND fe.date_entree <= ?'; params.push(fin + ' 23:59:59'); }
+  // Recherche libre : reference, n° BL, n° facture, n° fiche de besoin, ou fournisseur.
+  if (search && String(search).trim()) {
+    const s = '%' + String(search).trim() + '%';
+    where += ' AND (fe.reference LIKE ? OR fe.numero_bl LIKE ? OR fe.numero_facture LIKE ? OR fe.numero_fiche_besoin LIKE ? OR f.nom LIKE ?)';
+    params.push(s, s, s, s, s);
+  }
 
   const limit = 50;
   const off = parseInt(offset, 10) || 0;

@@ -28,11 +28,6 @@ var Parametres = {
       '<div id="users-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
       // Import Excel (admin only)
-      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Importer des données</h3></div>' +
-      '<p class="text-sm text-muted mb-sm">Importer un fichier Excel (.xlsx) contenant l\'historique des mouvements.</p>' +
-      '<div class="flex-between gap-sm"><input type="file" class="form-input" id="import-file" accept=".xlsx" style="max-width:350px">' +
-      '<button class="btn btn-accent btn-sm" id="btn-import" style="background:var(--color-accent);color:#fff">Importer Excel</button></div>' +
-      '<div id="import-result" class="mt-sm"></div></div>' : '') +
 
       // Anomalies d'import (admin only)
       (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Anomalies d\'import</h3></div>' +
@@ -83,7 +78,6 @@ var Parametres = {
       document.getElementById('btn-add-unite').addEventListener('click', function() { self._showUniteForm(); });
       document.getElementById('btn-add-loc').addEventListener('click', function() { self._showLocaliteForm(); });
       document.getElementById('btn-add-user').addEventListener('click', function() { self._showUserForm(); });
-      document.getElementById('btn-import').addEventListener('click', function() { self._importExcel(); });
       document.getElementById('btn-backup').addEventListener('click', function() { self._backupDB(); });
     }
     document.getElementById('btn-change-password').addEventListener('click', function() { self._changePassword(); });

@@ -249,6 +249,39 @@ const API = {
     });
   },
 
+  async getMouvementDetail(id) {
+    return this.fetch('/api/mouvements/' + id + '/detail');
+  },
+
+  // Demandes (assistant -> admin)
+  async createDemande(data) {
+    return this.fetch('/api/demandes', { method: 'POST', body: JSON.stringify(data) });
+  },
+  async getDemandes(params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/demandes' + (qs ? '?' + qs : ''));
+  },
+  async getDemandesCount() {
+    return this.fetch('/api/demandes/count');
+  },
+  async accepterDemande(id) {
+    return this.fetch('/api/demandes/' + id + '/accepter', { method: 'POST' });
+  },
+  async refuserDemande(id, reponse_note) {
+    return this.fetch('/api/demandes/' + id + '/refuser', { method: 'POST', body: JSON.stringify({ reponse_note: reponse_note || '' }) });
+  },
+  async deleteDemande(id) {
+    return this.fetch('/api/demandes/' + id, { method: 'DELETE' });
+  },
+
+  // Comptage (inventaire) : modification / suppression (admin)
+  async updateInventaire(id, data) {
+    return this.fetch('/api/inventaires/' + id, { method: 'PUT', body: JSON.stringify(data) });
+  },
+  async deleteInventaire(id) {
+    return this.fetch('/api/inventaires/' + id, { method: 'DELETE' });
+  },
+
 
   // Rapports
   getRapportStockUrl() { return '/api/rapports/stock'; },
@@ -600,6 +633,13 @@ const API = {
   async createFicheBesoin(data) {
     return this.fetch('/api/fiches-besoin', {
       method: 'POST',
+      body: JSON.stringify(data)
+    });
+  },
+
+  async updateFicheBesoin(id, data) {
+    return this.fetch('/api/fiches-besoin/' + id, {
+      method: 'PUT',
       body: JSON.stringify(data)
     });
   },

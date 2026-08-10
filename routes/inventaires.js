@@ -1,7 +1,7 @@
 // routes/inventaires.js — Grand livre (lecture) + Comptage physique (ajustement de stock)
 const express = require('express');
 const ExcelJS = require('exceljs');
-const { authenticate } = require('../middleware/auth');
+const { authenticate, requireAdmin } = require('../middleware/auth');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
@@ -69,6 +69,77 @@ router.post('/', authenticate, (req, res) => {
 
   logAudit(db, req.user.id, req.user.username, 'INVENTAIRE', (article.nom || '') + ' : compte ' + qteComptee + ' / theorique ' + article.stock_actuel + ' (ecart ' + (ecart > 0 ? '+' : '') + ecart + ')');
   res.status(201).json({ inventaire, message: ecart === 0 ? 'Comptage exact, aucun ajustement.' : 'Stock ajuste (ecart ' + (ecart > 0 ? '+' : '') + ecart + ').' });
+});
+
+// PUT /api/inventaires/:id — modifier un comptage (admin) : recompte. Annule l'effet
+// stock de l'ancien ecart puis applique le nouveau, de facon relative (robuste meme
+// si le stock a bouge depuis).
+router.put('/:id', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const inv = db.prepare('SELECT * FROM inventaires WHERE id = ?').get(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Comptage introuvable.' });
+
+  const { quantite_comptee, notes } = req.body;
+  const qteNew = parseInt(quantite_comptee, 10);
+  if (isNaN(qteNew) || qteNew < 0) return res.status(400).json({ error: 'La quantite comptee doit etre un nombre >= 0.' });
+
+  const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(inv.article_id);
+  if (!article) return res.status(404).json({ error: 'Article introuvable.' });
+
+  try {
+    const transaction = db.transaction(() => {
+      // Etat sans l'effet de l'ancien comptage.
+      const stockSansAncien = article.stock_actuel - inv.ecart;
+      const nouvelEcart = qteNew - stockSansAncien;
+
+      db.prepare('UPDATE inventaires SET stock_theorique = ?, quantite_comptee = ?, ecart = ?, notes = ? WHERE id = ?')
+        .run(stockSansAncien, qteNew, nouvelEcart, notes !== undefined ? notes : inv.notes, req.params.id);
+
+      // Remplacer le mouvement d'ajustement lie a ce comptage.
+      db.prepare("DELETE FROM mouvements WHERE motif LIKE 'Inventaire%' AND article_id = ? AND date = (SELECT date_inventaire FROM inventaires WHERE id = ?)")
+        .run(inv.article_id, req.params.id);
+      if (nouvelEcart !== 0) {
+        db.prepare(`
+          INSERT INTO mouvements (article_id, type, quantite, motif, user_id, date)
+          VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
+        `).run(inv.article_id, nouvelEcart > 0 ? 'entree' : 'sortie', Math.abs(nouvelEcart),
+          'Inventaire (modifie) — ecart ' + (nouvelEcart > 0 ? '+' : '') + nouvelEcart, req.user.id);
+      }
+
+      db.prepare("UPDATE articles SET stock_actuel = ?, updated_at = datetime('now','localtime') WHERE id = ?")
+        .run(qteNew, inv.article_id);
+    });
+    transaction();
+  } catch (err) {
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
+
+  logAudit(db, req.user.id, req.user.username, 'MODIF_COMPTAGE', (article.nom || '') + ' : recompte ' + inv.quantite_comptee + ' -> ' + qteNew);
+  res.json({ inventaire: db.prepare('SELECT * FROM inventaires WHERE id = ?').get(req.params.id) });
+});
+
+// DELETE /api/inventaires/:id — supprimer un comptage (admin) : annule son effet
+// stock (stock -= ecart) et retire le mouvement d'ajustement associe.
+router.delete('/:id', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const inv = db.prepare('SELECT * FROM inventaires WHERE id = ?').get(req.params.id);
+  if (!inv) return res.status(404).json({ error: 'Comptage introuvable.' });
+
+  const transaction = db.transaction(() => {
+    if (inv.ecart !== 0) {
+      db.prepare("UPDATE articles SET stock_actuel = stock_actuel - ?, updated_at = datetime('now','localtime') WHERE id = ?")
+        .run(inv.ecart, inv.article_id);
+      db.prepare("DELETE FROM mouvements WHERE motif LIKE 'Inventaire%' AND article_id = ? AND date = ?")
+        .run(inv.article_id, inv.date_inventaire);
+    }
+    db.prepare('DELETE FROM inventaires WHERE id = ?').run(req.params.id);
+  });
+  transaction();
+
+  const article = db.prepare('SELECT nom FROM articles WHERE id = ?').get(inv.article_id);
+  logAudit(db, req.user.id, req.user.username, 'SUPPR_COMPTAGE', (article ? article.nom : '#' + inv.article_id) + ' : comptage ' + inv.quantite_comptee + ' (ecart ' + inv.ecart + ') annule');
+  res.json({ message: 'Comptage supprime, stock retabli.' });
 });
 
 // GET /api/inventaires/journal — grand livre chronologique (solde cumule par article)

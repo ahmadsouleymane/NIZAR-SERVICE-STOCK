@@ -123,12 +123,12 @@ var Mouvements = {
         '<td>' + UI.escapeHtml(m.numero_fin || '-') + '</td>' +
         '<td>' + localite + '</td>' +
         '<td>' + UI.escapeHtml(m.username || '-') + '</td>' +
-        '</tr><tr class="mvt-detail" id="mvt-detail-' + i + '" style="display:none"><td colspan="9">' + self._buildDetail(m) + '</td></tr>';
+        '</tr><tr class="mvt-detail" id="mvt-detail-' + i + '" style="display:none"><td colspan="9"><div id="mvt-detail-body-' + i + '" style="background:var(--color-muted);padding:12px;border-radius:8px;font-size:0.875rem">' + self._buildDetail(m) + '</div></td></tr>';
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
-    // Click to expand/collapse
+    // Click to expand/collapse — charge le detail complet (fiche liee, articles, PDF) a la volee.
     el.querySelectorAll('.mvt-row').forEach(function(row) {
       row.addEventListener('click', function() {
         var idx = this.dataset.idx;
@@ -137,6 +137,10 @@ var Mouvements = {
         if (detail.style.display === 'none') {
           detail.style.display = '';
           icon.textContent = '▼';
+          if (!detail.dataset.loaded) {
+            detail.dataset.loaded = '1';
+            self._loadDetail(mvts[idx].id, idx);
+          }
         } else {
           detail.style.display = 'none';
           icon.textContent = '▶';
@@ -145,15 +149,56 @@ var Mouvements = {
     });
   },
 
-  _buildDetail: function(m) {
-    var detail = '<div style="background:var(--color-muted);padding:12px;border-radius:8px;font-size:0.875rem">';
-    detail += '<strong>Motif :</strong> ' + UI.escapeHtml(m.motif || '-') + '<br>';
-    if (m.fournisseur_nom) detail += '<strong>Fournisseur :</strong> ' + UI.escapeHtml(m.fournisseur_nom) + '<br>';
-    if (m.demandeur) detail += '<strong>Demandeur :</strong> ' + UI.escapeHtml(m.demandeur) + '<br>';
-    if (m.fiche_id) {
-      detail += '<strong>Fiche liée :</strong> <a href="#fiches" style="color:var(--color-primary)" class="link-to-fiche" data-id="' + m.fiche_id + '">' + UI.escapeHtml(m.fiche_reference || 'Fiche #' + m.fiche_id) + '</a><br>';
+  _loadDetail: function(id, idx) {
+    var body = document.getElementById('mvt-detail-body-' + idx);
+    if (!body) return;
+    API.getMouvementDetail(id).then(function(d) {
+      body.innerHTML = Mouvements._renderRichDetail(d);
+      var pdfBtn = body.querySelector('.mvt-pdf-btn');
+      if (pdfBtn) {
+        pdfBtn.addEventListener('click', function() {
+          var url = this.getAttribute('data-url');
+          var token = API.getToken();
+          fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+            .then(function(r) { if (!r.ok) throw new Error('Erreur'); return r.blob(); })
+            .then(function(blob) { var u = URL.createObjectURL(blob); window.open(u, '_blank'); setTimeout(function() { URL.revokeObjectURL(u); }, 1000); })
+            .catch(function() { UI.toast('Erreur lors du chargement du PDF.', 'error'); });
+        });
+      }
+    }).catch(function() { /* on garde le detail basique */ });
+  },
+
+  _renderRichDetail: function(d) {
+    var m = d.mouvement;
+    var h = '<div style="display:flex;flex-wrap:wrap;gap:24px">';
+    h += '<div><strong>Motif :</strong> ' + UI.escapeHtml(m.motif || '-') + '<br>';
+    if (m.fournisseur_nom) h += '<strong>Fournisseur :</strong> ' + UI.escapeHtml(m.fournisseur_nom) + '<br>';
+    if (m.localite_nom) h += '<strong>Localité :</strong> ' + UI.escapeHtml(m.localite_nom) + '<br>';
+    h += '<strong>Saisi par :</strong> ' + UI.escapeHtml(m.cree_par || '-') + '</div>';
+
+    if (d.source && d.source.fiche) {
+      var f = d.source.fiche;
+      var titre = d.source.kind === 'sortie' ? 'Sortie' : 'Entrée';
+      h += '<div style="flex:1;min-width:260px">';
+      h += '<strong>' + titre + ' liée : ' + UI.escapeHtml(f.reference || '') + '</strong>';
+      if (d.source.pdf_url) h += ' <button class="btn btn-sm btn-accent mvt-pdf-btn" data-url="' + UI.escapeHtml(d.source.pdf_url) + '" style="margin-left:8px">PDF</button>';
+      if (d.source.lignes && d.source.lignes.length) {
+        h += '<div class="table-wrapper" style="margin-top:6px"><table><thead><tr><th>Article</th><th>Unité</th><th>Qté</th><th>N° début</th><th>N° fin</th></tr></thead><tbody>';
+        for (var i = 0; i < d.source.lignes.length; i++) {
+          var l = d.source.lignes[i];
+          h += '<tr><td>' + UI.escapeHtml(l.article_nom || '-') + '</td><td>' + UI.escapeHtml(UI.uniteLabel(l.unite)) + '</td><td>' + l.quantite + '</td><td>' + UI.escapeHtml(l.numero_debut || '-') + '</td><td>' + UI.escapeHtml(l.numero_fin || '-') + '</td></tr>';
+        }
+        h += '</tbody></table></div>';
+      }
+      h += '</div>';
     }
-    detail += '</div>';
+    h += '</div>';
+    return h;
+  },
+
+  _buildDetail: function(m) {
+    var detail = '<strong>Motif :</strong> ' + UI.escapeHtml(m.motif || '-') + '<br>';
+    detail += '<span class="text-sm text-muted">Chargement du détail…</span>';
     return detail;
   }
 };
