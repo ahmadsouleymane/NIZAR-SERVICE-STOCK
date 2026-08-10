@@ -77,8 +77,10 @@ var Articles = {
       return;
     }
 
+    var showPrix = UI.isAdmin(); // l'assistant ne voit pas la valeur (prix) du stock
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Référence</th><th>Nom</th><th>Catégorie</th><th>Stock</th><th>Min</th><th>Prix</th><th>Fournisseur</th><th>Actions</th></tr></thead><tbody>';
+      '<th>Référence</th><th>Nom</th><th>Catégorie</th><th>Stock</th><th>Min</th>' +
+      (showPrix ? '<th>Prix</th>' : '') + '<th>Fournisseur</th><th>Actions</th></tr></thead><tbody>';
 
     var self = this;
     for (var i = 0; i < articles.length; i++) {
@@ -89,12 +91,12 @@ var Articles = {
         '<td>' + UI.escapeHtml(a.categorie_nom || '-') + '</td>' +
         '<td>' + UI.renderStockBadge(a.stock_actuel, a.stock_min) + ' <strong>' + a.stock_actuel + '</strong> ' + UI.escapeHtml(UI.uniteLabel(a.unite)) + '</td>' +
         '<td>' + a.stock_min + '</td>' +
-        '<td>' + UI.formatPrice(a.prix_unitaire) + '</td>' +
+        (showPrix ? '<td>' + UI.formatPrice(a.prix_unitaire) + '</td>' : '') +
         '<td>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-info btn-detail-art" data-id="' + a.id + '" title="Details (historique + series)">Details</button>' +
-        '<button class="btn btn-sm btn-secondary btn-edit" data-id="' + a.id + '" title="Modifier">Modifier</button>' +
-        (UI.isAdmin() ? '<button class="btn btn-sm btn-danger btn-delete" data-id="' + a.id + '" title="Supprimer">Suppr.</button>' : '') +
+        '<button class="btn btn-sm btn-secondary btn-edit" data-id="' + a.id + '" title="Modifier">Modifier' + (UI.isAssistant() ? ' (demande)' : '') + '</button>' +
+        '<button class="btn btn-sm btn-danger btn-delete" data-id="' + a.id + '" title="Supprimer">Suppr.' + (UI.isAssistant() ? ' (demande)' : '') + '</button>' +
         '</td>' +
         '</tr>';
     }
@@ -107,8 +109,12 @@ var Articles = {
       var btn = btns[j];
       btn.addEventListener('click', function() {
         var id = parseInt(this.getAttribute('data-id'));
+        var a = articles.find(function(x) { return x.id === id; });
         if (this.classList.contains('btn-edit')) self._showForm(id);
-        else if (this.classList.contains('btn-delete')) self._deleteArticle(id);
+        else if (this.classList.contains('btn-delete')) {
+          if (UI.isAssistant()) UI.demanderAdmin('suppression', 'article', id, 'Article : ' + (a ? a.nom : '#' + id));
+          else self._deleteArticle(id);
+        }
         else if (this.classList.contains('btn-detail-art')) self._showDetail(id);
       });
     }
@@ -148,7 +154,7 @@ var Articles = {
           '</div>' +
           '<div class="form-row">' +
           '<div class="form-group"><label class="form-label">Stock minimum</label><input type="number" class="form-input" id="art-min" value="10" min="0"></div>' +
-          '<div class="form-group"><label class="form-label">Prix unitaire</label><input type="number" class="form-input" id="art-prix" value="0" min="0" step="0.01"></div>' +
+          (UI.isAdmin() ? '<div class="form-group"><label class="form-label">Prix unitaire</label><input type="number" class="form-input" id="art-prix" value="0" min="0" step="0.01"></div>' : '') +
           '</div>' +
           '<div class="form-group"><label class="form-label">Fournisseur principal</label><select class="form-select" id="art-fourn">' + fournOptions + '</select></div>' +
           '<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
@@ -170,7 +176,7 @@ var Articles = {
             document.getElementById('art-cat').value = a.categorie_id || '';
             document.getElementById('art-unite').value = a.unite;
             document.getElementById('art-min').value = a.stock_min;
-            document.getElementById('art-prix').value = a.prix_unitaire;
+            var prixEl = document.getElementById('art-prix'); if (prixEl) prixEl.value = a.prix_unitaire;
             document.getElementById('art-fourn').value = a.fournisseur_id || '';
             document.getElementById('art-souche-loc').checked = !!a.souche_par_localite;
             document.getElementById('art-desc').value = a.description || '';
@@ -181,17 +187,18 @@ var Articles = {
   },
 
   _saveArticle: function(modal, isEdit, id) {
+    var prixEl = document.getElementById('art-prix');
     var data = {
       reference: document.getElementById('art-ref').value.trim(),
       nom: document.getElementById('art-nom').value.trim(),
       categorie_id: document.getElementById('art-cat').value || null,
       unite: document.getElementById('art-unite').value,
       stock_min: parseInt(document.getElementById('art-min').value) || 0,
-      prix_unitaire: parseFloat(document.getElementById('art-prix').value) || 0,
       fournisseur_id: document.getElementById('art-fourn').value || null,
       souche_par_localite: document.getElementById('art-souche-loc').checked ? 1 : 0,
       description: document.getElementById('art-desc').value.trim() || null
     };
+    if (prixEl) data.prix_unitaire = parseFloat(prixEl.value) || 0;
 
     if (!data.reference || !data.nom) {
       UI.toast('Reference et nom sont requis.', 'error');
@@ -199,8 +206,16 @@ var Articles = {
     }
 
     var self = this;
-    var promise = isEdit ? API.updateArticle(id, data) : API.createArticle(data);
 
+    // Assistant : creation/modification passent par une demande, appliquee a l'approbation admin.
+    if (UI.isAssistant()) {
+      UI.envoyerDemandePayload(isEdit ? 'modification' : 'creation', 'article', isEdit ? id : null, 'Article : ' + data.nom, data)
+        .then(function() { modal.close(); })
+        .catch(function() {});
+      return;
+    }
+
+    var promise = isEdit ? API.updateArticle(id, data) : API.createArticle(data);
     promise
       .then(function() {
         UI.toast(isEdit ? 'Article modifie.' : 'Article cree.', 'success');
@@ -224,7 +239,7 @@ var Articles = {
         '<div class="summary-box" style="margin-bottom:1rem">' +
         '<div class="summary-item">Categorie: <strong>' + UI.escapeHtml(a.categorie_nom || '-') + '</strong></div>' +
         '<div class="summary-item">Fournisseur: <strong>' + UI.escapeHtml(a.fournisseur_nom || '-') + '</strong></div>' +
-        '<div class="summary-item">Prix: <strong>' + UI.formatPrice(a.prix_unitaire) + '</strong></div>' +
+        (UI.isAdmin() ? '<div class="summary-item">Prix: <strong>' + UI.formatPrice(a.prix_unitaire) + '</strong></div>' : '') +
         '<div class="summary-item">Stock min: <strong>' + a.stock_min + '</strong></div>' +
         '</div>';
 

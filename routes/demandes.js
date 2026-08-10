@@ -10,21 +10,26 @@ const router = express.Router();
 // POST /api/demandes — l'assistant (ou tout utilisateur) cree une demande.
 router.post('/', authenticate, (req, res) => {
   const db = req.db;
-  const { type, cible_type, cible_id, cible_label, note } = req.body;
+  const { type, cible_type, cible_id, cible_label, note, payload } = req.body;
 
-  if (!['suppression', 'modification'].includes(type)) {
+  if (!['creation', 'suppression', 'modification'].includes(type)) {
     return res.status(400).json({ error: 'Type de demande invalide.' });
   }
   if (!cible_type) return res.status(400).json({ error: 'Cible manquante.' });
-  if (!note || !String(note).trim()) return res.status(400).json({ error: 'Une note expliquant la raison est requise.' });
+  // creation/modification portent un payload (les valeurs proposees) ; la note est
+  // optionnelle pour tous les types (l'assistant peut simplement demander la suppression).
+  if ((type === 'creation' || type === 'modification') && !payload) {
+    return res.status(400).json({ error: 'Les modifications proposées sont manquantes.' });
+  }
 
+  const payloadStr = payload ? (typeof payload === 'string' ? payload : JSON.stringify(payload)) : null;
   const result = db.prepare(`
-    INSERT INTO demandes (user_id, username, type, cible_type, cible_id, cible_label, note)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(req.user.id, req.user.username, type, cible_type, cible_id || null, cible_label || null, String(note).trim());
+    INSERT INTO demandes (user_id, username, type, cible_type, cible_id, cible_label, note, payload)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(req.user.id, req.user.username, type, cible_type, cible_id || null, cible_label || null, note ? String(note).trim() : null, payloadStr);
 
   const demande = db.prepare('SELECT * FROM demandes WHERE id = ?').get(result.lastInsertRowid);
-  logAudit(db, req.user.id, req.user.username, 'DEMANDE_' + type.toUpperCase(), (cible_label || cible_type) + ' — ' + String(note).trim().slice(0, 120));
+  logAudit(db, req.user.id, req.user.username, 'DEMANDE_' + type.toUpperCase(), (cible_label || cible_type) + (note ? ' — ' + String(note).trim().slice(0, 100) : ''));
   res.status(201).json({ demande });
 });
 

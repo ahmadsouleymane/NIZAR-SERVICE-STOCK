@@ -51,8 +51,8 @@ var Fournisseurs = {
         '<td>' + (f.nb_commandes || 0) + '</td>' +
         '<td class="actions">' +
         '<button class="btn btn-sm btn-secondary btn-detail" data-id="' + f.id + '" title="Details">Details</button>' +
-        '<button class="btn btn-sm btn-secondary btn-edit-f" data-id="' + f.id + '" title="Modifier">Modifier</button>' +
-        (isAdmin ? '<button class="btn btn-sm btn-danger btn-delete-f" data-id="' + f.id + '" title="Supprimer">Suppr.</button>' : '') +
+        '<button class="btn btn-sm btn-secondary btn-edit-f" data-id="' + f.id + '" data-nom="' + UI.escapeHtml(f.nom) + '" title="Modifier">Modifier' + (UI.isAssistant() ? ' (demande)' : '') + '</button>' +
+        '<button class="btn btn-sm btn-danger btn-delete-f" data-id="' + f.id + '" data-nom="' + UI.escapeHtml(f.nom) + '" title="Supprimer">Suppr.' + (UI.isAssistant() ? ' (demande)' : '') + '</button>' +
         '</td>' +
         '</tr>';
     }
@@ -67,7 +67,10 @@ var Fournisseurs = {
         var id = parseInt(this.getAttribute('data-id'));
         if (this.classList.contains('btn-detail')) self._showDetail(id);
         else if (this.classList.contains('btn-edit-f')) self._showForm(id);
-        else if (this.classList.contains('btn-delete-f')) self._deleteFournisseur(id);
+        else if (this.classList.contains('btn-delete-f')) {
+          if (UI.isAssistant()) UI.demanderAdmin('suppression', 'fournisseur', id, 'Fournisseur : ' + (this.getAttribute('data-nom') || '#' + id));
+          else self._deleteFournisseur(id);
+        }
       });
     }
   },
@@ -120,8 +123,16 @@ var Fournisseurs = {
     if (!data.nom) { UI.toast('Nom requis.', 'error'); return; }
 
     var self = this;
-    var promise = isEdit ? API.updateFournisseur(id, data) : API.createFournisseur(data);
 
+    // Assistant : creation/modification passent par une demande, appliquee a l'approbation admin.
+    if (UI.isAssistant()) {
+      UI.envoyerDemandePayload(isEdit ? 'modification' : 'creation', 'fournisseur', isEdit ? id : null, 'Fournisseur : ' + data.nom, data)
+        .then(function() { modal.close(); })
+        .catch(function() {});
+      return;
+    }
+
+    var promise = isEdit ? API.updateFournisseur(id, data) : API.createFournisseur(data);
     promise
       .then(function() {
         UI.toast(isEdit ? 'Fournisseur modifie.' : 'Fournisseur cree.', 'success');

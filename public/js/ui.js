@@ -401,27 +401,33 @@ var UI = {
     catch (e) { return false; }
   },
 
-  // Flux « Demander à l'admin » : l'assistant, qui ne peut pas supprimer/modifier
-  // lui-meme, envoie une demande avec une note expliquant la raison. L'admin la
-  // traite depuis son tableau de bord.
-  // type: 'suppression' | 'modification' ; cibleType/cibleId/cibleLabel decrivent l'element.
+  // Flux « Demander à l'admin » : l'assistant ne peut pas supprimer/modifier/creer
+  // directement — l'action devient une demande en attente, appliquee seulement quand
+  // l'admin l'approuve. Ici : demande de SUPPRESSION (note optionnelle).
   demanderAdmin: function(type, cibleType, cibleId, cibleLabel) {
     var self = this;
-    var titre = (type === 'suppression' ? 'Demander la suppression' : 'Demander la modification');
     var html = '<p class="text-sm text-muted mb-sm">' + self.escapeHtml(cibleLabel || '') + '</p>' +
-      '<div class="form-group"><label class="form-label">Raison de la demande *</label>' +
+      '<div class="form-group"><label class="form-label">Raison (optionnel)</label>' +
       '<textarea class="form-input" id="demande-note" rows="3" placeholder="Expliquez pourquoi (l\'admin verra cette note)..."></textarea></div>' +
-      '<p class="text-sm text-muted">Votre demande sera envoyée à l\'administrateur, qui pourra l\'accepter ou la refuser.</p>';
-    self.modal(titre, html, [
+      '<p class="text-sm text-muted">La suppression sera appliquée seulement après validation de l\'administrateur.</p>';
+    self.modal('Demander la suppression', html, [
       { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
       { label: 'Envoyer la demande', cls: 'btn-primary', callback: function(m) {
         var note = document.getElementById('demande-note').value.trim();
-        if (!note) { self.toast('Une note expliquant la raison est requise.', 'error'); return; }
-        API.createDemande({ type: type, cible_type: cibleType, cible_id: cibleId, cible_label: cibleLabel, note: note })
+        API.createDemande({ type: type, cible_type: cibleType, cible_id: cibleId, cible_label: cibleLabel, note: note || null })
           .then(function() { self.toast('Demande envoyée à l\'administrateur.', 'success'); m.close(); })
           .catch(function(err) { self.toast(err.message, 'error'); });
       } }
     ]);
+  },
+
+  // Envoi direct d'une demande de CREATION ou MODIFICATION avec les valeurs proposees
+  // (payload). Utilise apres soumission d'un formulaire par l'assistant : la modif
+  // ne prend effet qu'a l'approbation admin. Retourne une promesse.
+  envoyerDemandePayload: function(type, cibleType, cibleId, cibleLabel, payload) {
+    return API.createDemande({ type: type, cible_type: cibleType, cible_id: cibleId, cible_label: cibleLabel, payload: payload })
+      .then(function() { UI.toast('Demande envoyée à l\'administrateur (en attente de validation).', 'success'); })
+      .catch(function(err) { UI.toast(err.message, 'error'); throw err; });
   },
 
   // Helpers

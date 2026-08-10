@@ -122,8 +122,11 @@ var Souches = {
         '<strong>Plage complète :</strong> <span style="font-family:var(--font-heading)">' + UI.escapeHtml(s.numero_debut || '') + ' — ' + UI.escapeHtml(s.numero_fin || '') + '</span><br>' +
         '<strong>Type :</strong> ' + UI.escapeHtml(s.source_type) + '<br>' +
         (s.localite_nom ? '<strong>Localité :</strong> ' + UI.escapeHtml(s.localite_nom) + '<br>' : '') +
-        (s.fiche_reference ? '<strong>Fiche liée :</strong> <a href="#fiches" style="color:var(--color-primary)">' + UI.escapeHtml(s.fiche_reference) + '</a><br>' : '') +
+        (s.fiche_reference ? '<strong>Fiche liée :</strong> ' + UI.escapeHtml(s.fiche_reference) + '<br>' : '') +
         '<strong>Réf. article :</strong> ' + UI.escapeHtml(s.reference || '-') +
+        ((s.source_id && (s.source_type === 'sortie' || s.source_type === 'entree'))
+          ? '<div class="mt-sm"><button class="btn btn-sm btn-accent btn-voir-fiche" data-type="' + s.source_type + '" data-id="' + s.source_id + '">Voir la fiche (PDF)</button></div>'
+          : '') +
         '</div></td></tr>';
     }
     html += '</tbody></table></div>';
@@ -142,6 +145,19 @@ var Souches = {
           detail.style.display = 'none';
           icon.textContent = '▶';
         }
+      });
+    });
+
+    // Bouton « Voir la fiche » : ouvre le PDF de la sortie/entrée liée (authentifié).
+    document.getElementById('souche-result').querySelectorAll('.btn-voir-fiche').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        var url = (this.dataset.type === 'entree' ? '/api/entrees/' : '/api/fiches/') + this.dataset.id + '/pdf';
+        var token = API.getToken();
+        fetch(url, { headers: { 'Authorization': 'Bearer ' + token } })
+          .then(function(r) { if (!r.ok) throw new Error('Fiche introuvable'); return r.blob(); })
+          .then(function(blob) { var u = URL.createObjectURL(blob); window.open(u, '_blank'); setTimeout(function() { URL.revokeObjectURL(u); }, 1000); })
+          .catch(function(err) { UI.toast(err.message || 'Erreur ouverture de la fiche.', 'error'); });
       });
     });
   },

@@ -247,11 +247,12 @@ function initDB(dbPath) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
       username TEXT,
-      type TEXT NOT NULL CHECK(type IN ('suppression','modification')),
+      type TEXT NOT NULL CHECK(type IN ('creation','suppression','modification')),
       cible_type TEXT NOT NULL,
       cible_id INTEGER,
       cible_label TEXT,
-      note TEXT NOT NULL,
+      note TEXT,
+      payload TEXT,
       statut TEXT NOT NULL DEFAULT 'en_attente' CHECK(statut IN ('en_attente','acceptee','refusee')),
       traite_par INTEGER REFERENCES users(id) ON DELETE SET NULL,
       traite_par_nom TEXT,
@@ -260,6 +261,37 @@ function initDB(dbPath) {
       date_traitement TEXT
     );
   `);
+
+  // Migration demandes : ajouter payload + autoriser le type 'creation' + note optionnelle.
+  // La table est recente (souvent vide) ; on la recree en preservant les lignes existantes.
+  {
+    const demCols = db.prepare("PRAGMA table_info(demandes)").all();
+    if (demCols.length && !demCols.some((c) => c.name === 'payload')) {
+      db.exec(`
+        CREATE TABLE demandes_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          username TEXT,
+          type TEXT NOT NULL CHECK(type IN ('creation','suppression','modification')),
+          cible_type TEXT NOT NULL,
+          cible_id INTEGER,
+          cible_label TEXT,
+          note TEXT,
+          payload TEXT,
+          statut TEXT NOT NULL DEFAULT 'en_attente' CHECK(statut IN ('en_attente','acceptee','refusee')),
+          traite_par INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          traite_par_nom TEXT,
+          reponse_note TEXT,
+          date_creation TEXT DEFAULT (datetime('now','localtime')),
+          date_traitement TEXT
+        );
+        INSERT INTO demandes_new (id, user_id, username, type, cible_type, cible_id, cible_label, note, statut, traite_par, traite_par_nom, reponse_note, date_creation, date_traitement)
+          SELECT id, user_id, username, type, cible_type, cible_id, cible_label, note, statut, traite_par, traite_par_nom, reponse_note, date_creation, date_traitement FROM demandes;
+        DROP TABLE demandes;
+        ALTER TABLE demandes_new RENAME TO demandes;
+      `);
+    }
+  }
 
   // Migration : ajouter les colonnes manquantes aux tables existantes (bases créées avant V2)
   function ensureColumn(db, table, column, ddl) {

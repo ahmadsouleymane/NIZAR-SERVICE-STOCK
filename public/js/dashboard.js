@@ -2,7 +2,8 @@
 var Dashboard = {
   render: function(container) {
     var demandesCard = UI.isAdmin()
-      ? '<div class="card" id="demandes-card" style="display:none"><div class="card-header"><h3 class="card-title">Demandes en attente</h3></div><div id="demandes-list"></div></div>'
+      ? '<div class="card" id="demandes-card" style="display:none"><div class="card-header"><h3 class="card-title">Demandes en attente</h3></div><div id="demandes-list"></div></div>' +
+        '<div class="card"><div class="card-header flex-between"><h3 class="card-title">Historique des demandes</h3><button class="btn btn-secondary btn-sm" id="btn-hist-demandes">Afficher</button></div><div id="demandes-historique"></div></div>'
       : '';
     container.innerHTML = '<div class="kpi-grid" id="kpi-grid">' + UI.renderSkeleton(4) + '</div>' +
       demandesCard +
@@ -21,7 +22,15 @@ var Dashboard = {
         container.innerHTML = '<div class="empty-state"><h3>Erreur</h3><p>' + UI.escapeHtml(err.message) + '</p></div>';
       });
 
-    if (UI.isAdmin()) Dashboard._loadDemandes();
+    if (UI.isAdmin()) {
+      Dashboard._loadDemandes();
+      var histBtn = document.getElementById('btn-hist-demandes');
+      if (histBtn) histBtn.addEventListener('click', function() {
+        var el = document.getElementById('demandes-historique');
+        if (el.dataset.shown) { el.innerHTML = ''; el.dataset.shown = ''; this.textContent = 'Afficher'; }
+        else { el.dataset.shown = '1'; this.textContent = 'Masquer'; Dashboard._loadHistoriqueDemandes(); }
+      });
+    }
   },
 
   // Suppression selon le type de cible (utilise les endpoints admin existants).
@@ -44,6 +53,34 @@ var Dashboard = {
     categorie: 'parametres', unite: 'parametres', fiche_besoin: 'fiches_besoin'
   },
 
+  // Application d'une modification/creation proposee, via les endpoints existants.
+  _appliquer: {
+    creation: {
+      article: function(p) { return API.createArticle(p); },
+      fournisseur: function(p) { return API.createFournisseur(p); }
+    },
+    modification: {
+      article: function(p, id) { return API.updateArticle(id, p); },
+      fournisseur: function(p, id) { return API.updateFournisseur(id, p); }
+    }
+  },
+
+  _parsePayload: function(d) {
+    if (!d.payload) return null;
+    try { return typeof d.payload === 'string' ? JSON.parse(d.payload) : d.payload; } catch (e) { return null; }
+  },
+
+  _payloadResume: function(p) {
+    if (!p) return '';
+    var parts = [];
+    for (var k in p) {
+      if (!p.hasOwnProperty(k)) continue;
+      if (p[k] === null || p[k] === '' || k === 'prix_unitaire') continue;
+      parts.push('<span class="text-sm"><strong>' + UI.escapeHtml(k) + '</strong> : ' + UI.escapeHtml(String(p[k])) + '</span>');
+    }
+    return parts.join(' · ');
+  },
+
   _loadDemandes: function() {
     API.getDemandes({ statut: 'en_attente' })
       .then(function(data) { Dashboard._renderDemandes(data.demandes || []); })
@@ -57,33 +94,40 @@ var Dashboard = {
     if (!demandes.length) { card.style.display = 'none'; return; }
     card.style.display = '';
 
+    var badges = { suppression: '<span class="badge badge-danger">Suppression</span>', modification: '<span class="badge badge-warning">Modification</span>', creation: '<span class="badge badge-info">Création</span>' };
     var html = '<div class="table-wrapper"><table><thead><tr>' +
-      '<th>Demandeur</th><th>Type</th><th>Élément</th><th>Raison</th><th>Date</th><th>Actions</th>' +
+      '<th>Demandeur</th><th>Type</th><th>Élément</th><th>Détails / modifs</th><th>Date</th><th>Actions</th>' +
       '</tr></thead><tbody>';
     for (var i = 0; i < demandes.length; i++) {
       var d = demandes[i];
-      var badge = d.type === 'suppression' ? '<span class="badge badge-danger">Suppression</span>' : '<span class="badge badge-warning">Modification</span>';
+      var p = Dashboard._parsePayload(d);
+      var details = p ? Dashboard._payloadResume(p) : UI.escapeHtml(d.note || '');
+      var actionBtn = (d.type === 'suppression')
+        ? '<button class="btn btn-sm btn-danger btn-dem-exec" data-id="' + d.id + '">Exécuter</button>'
+        : (p ? '<button class="btn btn-sm btn-success btn-dem-approuve" data-id="' + d.id + '">Approuver</button>'
+             : '<button class="btn btn-sm btn-primary btn-dem-modif" data-id="' + d.id + '">Aller modifier</button>');
       html += '<tr>' +
         '<td><strong>' + UI.escapeHtml(d.demandeur || d.username || '-') + '</strong></td>' +
-        '<td>' + badge + '</td>' +
+        '<td>' + (badges[d.type] || d.type) + '</td>' +
         '<td>' + UI.escapeHtml(d.cible_label || d.cible_type) + '</td>' +
-        '<td class="text-sm">' + UI.escapeHtml(d.note || '') + '</td>' +
+        '<td>' + details + (p && d.note ? '<br><span class="text-sm text-muted">Note : ' + UI.escapeHtml(d.note) + '</span>' : '') + '</td>' +
         '<td class="text-sm">' + UI.formatDate(d.date_creation) + '</td>' +
-        '<td class="actions">' +
-        (d.type === 'suppression'
-          ? '<button class="btn btn-sm btn-danger btn-dem-exec" data-id="' + d.id + '">Exécuter</button>'
-          : '<button class="btn btn-sm btn-primary btn-dem-modif" data-id="' + d.id + '">Aller modifier</button>') +
+        '<td class="actions">' + actionBtn +
         '<button class="btn btn-sm btn-secondary btn-dem-refuse" data-id="' + d.id + '">Refuser</button>' +
         '</td></tr>';
     }
     html += '</tbody></table></div>';
     el.innerHTML = html;
 
+    var find = function(id) { return demandes.find(function(x) { return x.id === id; }); };
     el.querySelectorAll('.btn-dem-exec').forEach(function(btn) {
-      btn.addEventListener('click', function() { Dashboard._executerDemande(demandes.find(function(x){ return x.id === parseInt(btn.dataset.id, 10); })); });
+      btn.addEventListener('click', function() { Dashboard._executerDemande(find(parseInt(btn.dataset.id, 10))); });
+    });
+    el.querySelectorAll('.btn-dem-approuve').forEach(function(btn) {
+      btn.addEventListener('click', function() { Dashboard._approuverDemande(find(parseInt(btn.dataset.id, 10))); });
     });
     el.querySelectorAll('.btn-dem-modif').forEach(function(btn) {
-      btn.addEventListener('click', function() { Dashboard._modifierDemande(demandes.find(function(x){ return x.id === parseInt(btn.dataset.id, 10); })); });
+      btn.addEventListener('click', function() { Dashboard._modifierDemande(find(parseInt(btn.dataset.id, 10))); });
     });
     el.querySelectorAll('.btn-dem-refuse').forEach(function(btn) {
       btn.addEventListener('click', function() { Dashboard._refuserDemande(parseInt(btn.dataset.id, 10)); });
@@ -103,10 +147,24 @@ var Dashboard = {
     });
   },
 
+  // Approuve une creation/modification proposee : applique le payload puis marque acceptee.
+  _approuverDemande: function(d) {
+    if (!d) return;
+    var p = Dashboard._parsePayload(d);
+    var apply = (Dashboard._appliquer[d.type] || {})[d.cible_type];
+    if (!p || !apply) { UI.toast('Application automatique non disponible pour ce type.', 'warning'); return; }
+    UI.confirm('Approuver et appliquer cette ' + d.type + ' de « ' + (d.cible_label || d.cible_type) + ' » ?').then(function(ok) {
+      if (!ok) return;
+      apply(p, d.cible_id)
+        .then(function() { return API.accepterDemande(d.id); })
+        .then(function() { UI.toast('Appliqué et demande acceptée.', 'success'); Dashboard._loadDemandes(); })
+        .catch(function(err) { UI.toast(err.message, 'error'); });
+    });
+  },
+
   _modifierDemande: function(d) {
     if (!d) return;
     var page = Dashboard._pageCible[d.cible_type];
-    // Marque la demande acceptee puis emmene l'admin sur la page concernee.
     API.accepterDemande(d.id).catch(function() {});
     UI.toast('Demande acceptée — ouvrez l\'élément à modifier.', 'info');
     if (page) window.location.hash = page;
@@ -121,14 +179,38 @@ var Dashboard = {
     });
   },
 
+  // Historique : toutes les demandes deja traitees (acceptees/refusees).
+  _loadHistoriqueDemandes: function() {
+    var el = document.getElementById('demandes-historique');
+    if (!el) return;
+    API.getDemandes().then(function(data) {
+      var traitees = (data.demandes || []).filter(function(d) { return d.statut !== 'en_attente'; });
+      if (!traitees.length) { el.innerHTML = '<p class="text-muted text-center">Aucune demande traitée.</p>'; return; }
+      var html = '<div class="table-wrapper"><table><thead><tr><th>Date</th><th>Demandeur</th><th>Type</th><th>Élément</th><th>Statut</th><th>Traité par</th></tr></thead><tbody>';
+      for (var i = 0; i < traitees.length; i++) {
+        var d = traitees[i];
+        var st = d.statut === 'acceptee' ? '<span class="badge badge-success">Acceptée</span>' : '<span class="badge badge-neutral">Refusée</span>';
+        html += '<tr><td class="text-sm">' + UI.formatDate(d.date_traitement || d.date_creation) + '</td>' +
+          '<td>' + UI.escapeHtml(d.demandeur || d.username || '-') + '</td>' +
+          '<td class="text-sm">' + UI.escapeHtml(d.type) + '</td>' +
+          '<td>' + UI.escapeHtml(d.cible_label || d.cible_type) + '</td>' +
+          '<td>' + st + '</td>' +
+          '<td class="text-sm">' + UI.escapeHtml(d.traite_par_nom || '-') + '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+      el.innerHTML = html;
+    }).catch(function() {});
+  },
+
   _renderKPI: function(kpi) {
     var grid = document.getElementById('kpi-grid');
     var items = [
       { label: 'Total articles', value: kpi.totalArticles, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>', cls: '' },
       { label: 'Alertes stock bas', value: kpi.alertesStock, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>', cls: kpi.alertesStock > 0 ? 'danger' : 'success' },
       { label: 'Mouvements du jour', value: kpi.mouvementsJour, icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>', cls: '' },
-      { label: 'Valeur du stock', value: UI.formatPrice(kpi.valeurStock), icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>', cls: '' }
+      { label: 'Valeur du stock', value: UI.formatPrice(kpi.valeurStock), icon: '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>', cls: '', adminOnly: true }
     ];
+    if (!UI.isAdmin()) items = items.filter(function(it) { return !it.adminOnly; });
 
     var html = '';
     for (var i = 0; i < items.length; i++) {
