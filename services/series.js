@@ -46,6 +46,11 @@ function validerSouche(lot, numero_debut, numero_fin) {
  * @returns {Object|null} la serie en conflit, ou null si aucune / pas de plage fournie
  */
 function checkOverlap(db, article_id, numero_debut, numero_fin, source_type, opts) {
+  // TEMPORAIREMENT DESACTIVE (2026-08-10) : l'admin etait bloque par de faux
+  // chevauchements. On ignore tout conflit de plage. Pour reactiver, retirer
+  // ce retour anticipé (le code ci-dessous est intact).
+  return null;
+
   const d = parseNumero(numero_debut);
   const f = parseNumero(numero_fin);
   if (d === null || f === null) return null;

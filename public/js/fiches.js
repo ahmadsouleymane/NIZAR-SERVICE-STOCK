@@ -312,12 +312,11 @@ var Fiches = {
       return;
     }
     var msg = '<span class="text-muted">Dernier n° envoyé' + (l._parLocalite ? ' à cette destination' : '') + ' : <strong>' + l._derniereFin + '</strong> — prochaine attendue : <strong>' + l._prochaineDebut + '</strong>.</span>';
+    // TEMPORAIREMENT DESACTIVE : le message de chevauchement est supprimé
+    // (l'admin était bloqué par de faux chevauchements). On ne garde que la
+    // mention de l'écart, purement informative.
     var d = parseInt(l.numero_debut, 10);
-    if (!isNaN(d)) {
-      if (d > l._prochaineDebut) msg += ' <span style="color:#D97706">⚠ Écart : ' + l._prochaineDebut + ' à ' + (d - 1) + ' non enregistrés.</span>';
-      else if (d <= l._derniereFin) msg += ' <span style="color:#DC2626">⚠ Chevauche des numéros déjà enregistrés.</span>';
-      else msg += ' <span style="color:#16A34A">✓ Suite continue.</span>';
-    }
+    if (!isNaN(d) && d > l._prochaineDebut) msg += ' <span style="color:#D97706">⚠ Écart : ' + l._prochaineDebut + ' à ' + (d - 1) + ' non enregistrés.</span>';
     hintEl.innerHTML = msg;
   },
 
