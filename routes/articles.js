@@ -66,6 +66,40 @@ router.post('/', authenticate, requireAdmin, (req, res) => {
   res.status(201).json({ article });
 });
 
+// GET /api/articles/:id/souche-info — dernier numero de souche enregistre pour cet
+// article (aide a la saisie : reference + detection d'ecart, SANS remplissage auto —
+// les vrais numeros sont sur le billet physique). Scope par localite pour les
+// articles a numerotation par localite (sorties).
+router.get('/:id/souche-info', authenticate, (req, res) => {
+  const db = req.db;
+  const sourceType = req.query.type === 'entree' ? 'entree' : 'sortie';
+  const localite_id = req.query.localite_id;
+
+  const article = db.prepare('SELECT a.souche_par_localite, c.souches_par_unite AS lot FROM articles a LEFT JOIN categories c ON a.categorie_id = c.id WHERE a.id = ?').get(req.params.id);
+  if (!article) return res.status(404).json({ error: 'Article introuvable.' });
+
+  let row;
+  if (sourceType === 'sortie' && article.souche_par_localite && localite_id) {
+    row = db.prepare(`
+      SELECT MAX(CAST(s.numero_fin AS INTEGER)) AS maxfin
+      FROM series_numeros s JOIN fiches_reception fr ON fr.id = s.source_id
+      WHERE s.article_id = ? AND s.source_type = 'sortie' AND fr.localite_id = ?
+    `).get(req.params.id, localite_id);
+  } else {
+    row = db.prepare(`
+      SELECT MAX(CAST(numero_fin AS INTEGER)) AS maxfin
+      FROM series_numeros WHERE article_id = ? AND source_type = ?
+    `).get(req.params.id, sourceType);
+  }
+  const derniereFin = (row && row.maxfin) ? row.maxfin : null;
+  res.json({
+    derniere_fin: derniereFin,
+    prochaine_debut: derniereFin ? derniereFin + 1 : null,
+    lot: article.lot || null,
+    par_localite: !!article.souche_par_localite
+  });
+});
+
 // GET /api/articles/:id — detail + historique des mouvements + series de numeros
 router.get('/:id', authenticate, (req, res) => {
   const db = req.db;

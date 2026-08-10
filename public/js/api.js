@@ -253,6 +253,11 @@ const API = {
     return this.fetch('/api/mouvements/' + id + '/detail');
   },
 
+  async getSoucheInfo(articleId, params = {}) {
+    const qs = new URLSearchParams(params).toString();
+    return this.fetch('/api/articles/' + articleId + '/souche-info' + (qs ? '?' + qs : ''));
+  },
+
   // Demandes (assistant -> admin)
   async createDemande(data) {
     return this.fetch('/api/demandes', { method: 'POST', body: JSON.stringify(data) });

@@ -239,6 +239,12 @@ var Fiches = {
 
       if (editData) document.getElementById('envoi-loc').value = editData.fiche.localite_id;
 
+      // La destination influe sur l'aide « dernier n° » des articles par localité : on rafraîchit.
+      document.getElementById('envoi-loc').addEventListener('change', function() {
+        var container = document.getElementById('lignes-envoi');
+        for (var i = 0; i < self._lignes.length; i++) self._loadSoucheHint(i, container);
+      });
+
       document.getElementById('btn-add-line').addEventListener('click', function() {
         self._lignes.push({ article_id: '', quantite: 1, unite: '', numero_debut: '', numero_fin: '', article_type: '', article_nom: '' });
         self._renderLignesEnvoi();
@@ -279,6 +285,42 @@ var Fiches = {
     }
   },
 
+  // Aide à la saisie des souches : dernier n° connu + alerte d'écart/chevauchement.
+  // Ne remplit JAMAIS le numéro (la vérité est sur le billet physique).
+  _loadSoucheHint: function(idx, container) {
+    var self = this;
+    var l = this._lignes[idx];
+    var hintEl = container.querySelector('.souche-hint[data-idx="' + idx + '"]');
+    if (!hintEl || !l || !l.article_id || l.article_type !== 'numerote') { if (hintEl) hintEl.innerHTML = ''; return; }
+    var locSel = document.getElementById('envoi-loc');
+    var params = { type: 'sortie' };
+    if (locSel && locSel.value) params.localite_id = locSel.value;
+    API.getSoucheInfo(l.article_id, params).then(function(info) {
+      l._derniereFin = info.derniere_fin;
+      l._prochaineDebut = info.prochaine_debut;
+      l._parLocalite = info.par_localite;
+      self._updateSoucheHint(idx, container);
+    }).catch(function() {});
+  },
+
+  _updateSoucheHint: function(idx, container) {
+    var l = this._lignes[idx];
+    var hintEl = container.querySelector('.souche-hint[data-idx="' + idx + '"]');
+    if (!hintEl || !l) return;
+    if (l._derniereFin == null) {
+      hintEl.innerHTML = '<span class="text-muted">Aucune sortie précédente pour cet article' + (l._parLocalite ? ' à cette destination' : '') + '.</span>';
+      return;
+    }
+    var msg = '<span class="text-muted">Dernier n° envoyé' + (l._parLocalite ? ' à cette destination' : '') + ' : <strong>' + l._derniereFin + '</strong> — prochaine attendue : <strong>' + l._prochaineDebut + '</strong>.</span>';
+    var d = parseInt(l.numero_debut, 10);
+    if (!isNaN(d)) {
+      if (d > l._prochaineDebut) msg += ' <span style="color:#D97706">⚠ Écart : ' + l._prochaineDebut + ' à ' + (d - 1) + ' non enregistrés.</span>';
+      else if (d <= l._derniereFin) msg += ' <span style="color:#DC2626">⚠ Chevauche des numéros déjà enregistrés.</span>';
+      else msg += ' <span style="color:#16A34A">✓ Suite continue.</span>';
+    }
+    hintEl.innerHTML = msg;
+  },
+
   _renderLignesEnvoi: function() {
     var lc = document.getElementById('lignes-envoi');
     if (!lc) return;
@@ -302,7 +344,9 @@ var Fiches = {
         '<div><label class="form-label text-sm">N° fin</label><input type="text" class="form-input num-fin" data-idx="' + k + '" value="' + (l.numero_fin || '') + '" placeholder="N° fin" style="min-height:40px;width:100px"></div>' +
         '</div>' +
         '<button class="btn btn-sm btn-danger btn-rm-line" data-idx="' + k + '" style="min-width:32px;min-height:40px" title="Retirer">&times;</button>' +
-        '</div></div>';
+        '</div>' +
+        '<div class="souche-hint" data-idx="' + k + '" style="display:' + (showNum ? 'block' : 'none') + ';font-size:0.75rem;margin-top:6px"></div>' +
+        '</div>';
     }
     lc.innerHTML = h;
     this._bindLignes(lc);
@@ -335,7 +379,10 @@ var Fiches = {
           if (us) us.innerHTML = self._uniteOptions(item.type, l.unite);
           var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
           if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
+          var hint = container.querySelector('.souche-hint[data-idx="' + idx + '"]');
+          if (hint) hint.style.display = item.type === 'numerote' ? 'block' : 'none';
           self._recomputeQte(idx, container);
+          self._loadSoucheHint(idx, container);
         }
       });
       self._acLignes[idx] = ac;
@@ -346,6 +393,7 @@ var Fiches = {
         var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
         if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
         self._recomputeQte(idx, container);
+        self._loadSoucheHint(idx, container);
       }
     });
     container.querySelectorAll('.qte-envoi').forEach(function(el) {
@@ -355,7 +403,7 @@ var Fiches = {
       el.addEventListener('change', function() { self._lignes[parseInt(this.dataset.idx)].unite = this.value; });
     });
     container.querySelectorAll('.num-debut').forEach(function(el) {
-      el.addEventListener('input', function() { var i = parseInt(this.dataset.idx); self._lignes[i].numero_debut = this.value; self._recomputeQte(i, container); });
+      el.addEventListener('input', function() { var i = parseInt(this.dataset.idx); self._lignes[i].numero_debut = this.value; self._recomputeQte(i, container); self._updateSoucheHint(i, container); });
     });
     container.querySelectorAll('.num-fin').forEach(function(el) {
       el.addEventListener('input', function() { var i = parseInt(this.dataset.idx); self._lignes[i].numero_fin = this.value; self._recomputeQte(i, container); });
