@@ -1,7 +1,7 @@
 // routes/mouvements.js
 const express = require('express');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { checkOverlap, recordSerie } = require('../services/series');
+const { checkOverlap, recordSerie, validerSouche, quantiteDepuisSouche } = require('../services/series');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
 
@@ -153,6 +153,109 @@ router.get('/anomalies', authenticate, requireAdmin, (req, res) => {
     LIMIT 500
   `).all();
   res.json({ anomalies });
+});
+
+// GET /api/mouvements/anomalies-souches — mouvements d'articles numerotes dont la
+// plage de souches est PRESENTE mais INVALIDE : debut > fin, ou etendue non multiple
+// exact de la taille de lot de la categorie. Pour correction manuelle admin.
+router.get('/anomalies-souches', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const anomalies = db.prepare(`
+    SELECT m.id, m.date, m.type, m.quantite, m.numero_debut, m.numero_fin,
+      a.id as article_id, a.nom as article_nom, c.name as categorie, c.souches_par_unite as lot,
+      l.nom as localite_nom
+    FROM mouvements m
+    JOIN articles a ON m.article_id = a.id
+    LEFT JOIN categories c ON a.categorie_id = c.id
+    LEFT JOIN localites l ON m.localite_id = l.id
+    WHERE a.type_article = 'numerote'
+      AND m.numero_debut IS NOT NULL AND TRIM(m.numero_debut) != ''
+      AND m.numero_fin IS NOT NULL AND TRIM(m.numero_fin) != ''
+      AND (
+        CAST(m.numero_debut AS INTEGER) > CAST(m.numero_fin AS INTEGER)
+        OR (c.souches_par_unite IS NOT NULL
+            AND ((CAST(m.numero_fin AS INTEGER) - CAST(m.numero_debut AS INTEGER) + 1) % c.souches_par_unite) != 0)
+      )
+    ORDER BY m.date ASC, m.id ASC
+    LIMIT 500
+  `).all();
+  // Annoter chaque anomalie de la raison exacte.
+  anomalies.forEach(a => {
+    const d = parseInt(a.numero_debut, 10), f = parseInt(a.numero_fin, 10);
+    if (d > f) a.raison = 'Début (' + a.numero_debut + ') > fin (' + a.numero_fin + ')';
+    else if (a.lot) a.raison = 'Plage de ' + (f - d + 1) + ' n\'est pas un multiple de ' + a.lot;
+    else a.raison = 'Plage suspecte';
+  });
+  res.json({ anomalies });
+});
+
+// PATCH /api/mouvements/:id/souche — correction manuelle admin d'une plage INVALIDE.
+// Valide strictement la nouvelle plage (multiple de la taille de lot), verifie le
+// chevauchement, met a jour le mouvement + la serie correspondante, et ajuste le
+// stock du delta de quantite (une correction de plage peut changer la quantite reelle).
+router.patch('/:id/souche', authenticate, requireAdmin, (req, res) => {
+  const db = req.db;
+  const { numero_debut, numero_fin } = req.body;
+
+  const mvt = db.prepare(`
+    SELECT m.*, a.type_article, a.nom as article_nom, a.souche_par_localite, c.souches_par_unite as lot
+    FROM mouvements m JOIN articles a ON m.article_id = a.id
+    LEFT JOIN categories c ON a.categorie_id = c.id WHERE m.id = ?
+  `).get(req.params.id);
+  if (!mvt) return res.status(404).json({ error: 'Mouvement introuvable.' });
+  if (mvt.type_article !== 'numerote') return res.status(400).json({ error: 'Article non numeroté.' });
+
+  const v = validerSouche(mvt.lot, numero_debut, numero_fin);
+  if (!v.ok) return res.status(400).json({ error: v.raison });
+
+  const oldDebut = mvt.numero_debut, oldFin = mvt.numero_fin, oldQte = mvt.quantite;
+  const newQte = mvt.lot ? quantiteDepuisSouche(mvt.lot, numero_debut, numero_fin) : oldQte;
+
+  try {
+    const transaction = db.transaction(() => {
+      // Chevauchement (hors la plage actuelle de ce mouvement, qu'on remplace).
+      const overlap = checkOverlap(db, mvt.article_id, numero_debut, numero_fin,
+        mvt.type === 'entree' ? 'entree' : 'sortie',
+        { localite_id: mvt.localite_id, perLocalite: !!mvt.souche_par_localite });
+      if (overlap && !(String(overlap.numero_debut) === String(oldDebut) && String(overlap.numero_fin) === String(oldFin))) {
+        throw new Error('Chevauchement : plage ' + numero_debut + '-' + numero_fin + ' déjà enregistrée (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
+      }
+
+      db.prepare('UPDATE mouvements SET numero_debut = ?, numero_fin = ?, quantite = ? WHERE id = ?')
+        .run(String(numero_debut), String(numero_fin), newQte, req.params.id);
+
+      // Met a jour la serie correspondante (meme article + ancienne plage exacte).
+      db.prepare(`
+        UPDATE series_numeros SET numero_debut = ?, numero_fin = ?, quantite = ?
+        WHERE article_id = ? AND source_type = ? AND numero_debut = ? AND numero_fin = ?
+      `).run(String(numero_debut), String(numero_fin), newQte, mvt.article_id,
+        mvt.type === 'entree' ? 'entree' : 'sortie', String(oldDebut), String(oldFin));
+
+      // Met a jour la ligne de fiche liee (si presente) pour coherence d'affichage.
+      if (mvt.fiche_id) {
+        db.prepare(`
+          UPDATE fiche_reception_articles SET numero_debut = ?, numero_fin = ?, quantite = ?
+          WHERE fiche_id = ? AND article_id = ? AND numero_debut = ? AND numero_fin = ?
+        `).run(String(numero_debut), String(numero_fin), newQte, mvt.fiche_id, mvt.article_id, String(oldDebut), String(oldFin));
+      }
+
+      // Ajuste le stock du delta (entree: +delta ; sortie: -delta).
+      const delta = newQte - oldQte;
+      if (delta !== 0) {
+        const signe = mvt.type === 'entree' ? 1 : -1;
+        db.prepare("UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?")
+          .run(signe * delta, mvt.article_id);
+      }
+    });
+    transaction();
+  } catch (err) {
+    if (err.code && err.code.startsWith('SQLITE_')) throw err;
+    return res.status(400).json({ error: err.message });
+  }
+
+  logAudit(db, req.user.id, req.user.username, 'CORRIGER_SOUCHE',
+    mvt.article_nom + ' — mvt #' + req.params.id + ' : ' + oldDebut + '-' + oldFin + ' -> ' + numero_debut + '-' + numero_fin + (newQte !== oldQte ? ' (qté ' + oldQte + '->' + newQte + ')' : ''));
+  res.json({ mouvement: db.prepare('SELECT * FROM mouvements WHERE id = ?').get(req.params.id) });
 });
 
 // PATCH /api/mouvements/:id/numero — correction manuelle admin d'une plage manquante

@@ -575,6 +575,18 @@ const API = {
     });
   },
 
+  // Souches invalides (plage presente mais incoherente) — admin
+  async getAnomaliesSouches() {
+    return this.fetch('/api/mouvements/anomalies-souches');
+  },
+
+  async corrigerSouche(id, numero_debut, numero_fin) {
+    return this.fetch('/api/mouvements/' + id + '/souche', {
+      method: 'PATCH',
+      body: JSON.stringify({ numero_debut, numero_fin })
+    });
+  },
+
   // Fiches de besoin
   async getFichesBesoin(params = {}) {
     const qs = new URLSearchParams(params).toString();

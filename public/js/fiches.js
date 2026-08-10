@@ -201,7 +201,7 @@ var Fiches = {
       self._editId = editId || null;
       if (editData) {
         self._lignes = editData.lignes.map(function(l) {
-          return { article_id: l.article_id, quantite: l.quantite, unite: l.unite || '', numero_debut: l.numero_debut || '', numero_fin: l.numero_fin || '', article_type: l.type_article || '', article_nom: l.article_nom || '' };
+          return { article_id: l.article_id, quantite: l.quantite, unite: l.unite || '', numero_debut: l.numero_debut || '', numero_fin: l.numero_fin || '', article_type: l.type_article || '', article_nom: l.article_nom || '', souches_par_unite: l.souches_par_unite || null };
         });
       } else {
         self._lignes = [{ article_id: '', quantite: 1, unite: '', numero_debut: '', numero_fin: '', article_type: '', article_nom: '' }];
@@ -226,6 +226,38 @@ var Fiches = {
       });
       self._renderLignesEnvoi();
     }).catch(function(err) { UI.toast(err.message, 'error'); });
+  },
+
+  // Quantité déduite d'une plage de souches pour une taille de lot (miroir du serveur).
+  // Retourne un entier positif, ou null si invalide (début>fin, ou non multiple exact).
+  _lotQte: function(lot, d, f) {
+    lot = parseInt(lot, 10); d = parseInt(d, 10); f = parseInt(f, 10);
+    if (!lot || lot <= 0 || isNaN(d) || isNaN(f) || d > f) return null;
+    var span = f - d + 1;
+    if (span % lot !== 0) return null;
+    return span / lot;
+  },
+
+  // Recalcule la quantité d'une ligne depuis sa plage de souches quand l'article
+  // a une taille de lot ; le champ quantité devient alors non modifiable.
+  _recomputeQte: function(idx, container) {
+    var l = this._lignes[idx];
+    if (!l) return;
+    var qEl = container.querySelector('.qte-envoi[data-idx="' + idx + '"]');
+    if (!qEl) return;
+    if (!l.souches_par_unite) { qEl.readOnly = false; qEl.style.background = ''; qEl.title = ''; return; }
+    qEl.readOnly = true;
+    qEl.style.background = 'var(--color-bg-alt, #f5f5f5)';
+    var q = this._lotQte(l.souches_par_unite, l.numero_debut, l.numero_fin);
+    if (q != null) {
+      l.quantite = q; qEl.value = q;
+      qEl.style.borderColor = '';
+      qEl.title = 'Calculé : (fin − début + 1) ÷ ' + l.souches_par_unite;
+    } else {
+      l.quantite = 0; qEl.value = '';
+      qEl.style.borderColor = '#DC2626';
+      qEl.title = 'Plage invalide : doit être un multiple de ' + l.souches_par_unite;
+    }
   },
 
   _renderLignesEnvoi: function() {
@@ -267,7 +299,7 @@ var Fiches = {
         search: function(term, cb) {
           API.getArticles({ search: term }).then(function(data) {
             cb(data.articles.map(function(a) {
-              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article, unite: UI.uniteLabel(a.unite) };
+              return { id: a.id, label: a.nom, meta: 'Stock: ' + a.stock_actuel + ' ' + UI.uniteLabel(a.unite), type: a.type_article, unite: UI.uniteLabel(a.unite), souches_par_unite: a.souches_par_unite };
             }));
           }).catch(function() { cb([]); });
         },
@@ -276,12 +308,15 @@ var Fiches = {
           l.article_id = item.id;
           l.article_type = item.type;
           l.article_nom = item.label;
-          if (!l.unite) l.unite = item.type === 'numerote' ? 'Lot de 500' : (item.unite || 'Unité');
-          // Met à jour le sélecteur d'unité + l'affichage des n° selon le type
+          l.souches_par_unite = item.souches_par_unite || null;
+          // Article numéroté avec taille de lot : unité = « Lot de N », quantité calculée.
+          if (item.type === 'numerote' && l.souches_par_unite) l.unite = 'Lot de ' + l.souches_par_unite;
+          else if (!l.unite) l.unite = item.type === 'numerote' ? 'Lot de 500' : (item.unite || 'Unité');
           var us = container.querySelector('.unite-envoi[data-idx="' + idx + '"]');
           if (us) us.innerHTML = self._uniteOptions(item.type, l.unite);
           var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
           if (nf) nf.style.display = item.type === 'numerote' ? 'flex' : 'none';
+          self._recomputeQte(idx, container);
         }
       });
       self._acLignes[idx] = ac;
@@ -291,6 +326,7 @@ var Fiches = {
         if (us) us.innerHTML = self._uniteOptions(self._lignes[idx].article_type, self._lignes[idx].unite);
         var nf = container.querySelector('.num-fields[data-idx="' + idx + '"]');
         if (nf) nf.style.display = self._lignes[idx].article_type === 'numerote' ? 'flex' : 'none';
+        self._recomputeQte(idx, container);
       }
     });
     container.querySelectorAll('.qte-envoi').forEach(function(el) {
@@ -300,10 +336,10 @@ var Fiches = {
       el.addEventListener('change', function() { self._lignes[parseInt(this.dataset.idx)].unite = this.value; });
     });
     container.querySelectorAll('.num-debut').forEach(function(el) {
-      el.addEventListener('input', function() { self._lignes[parseInt(this.dataset.idx)].numero_debut = this.value; });
+      el.addEventListener('input', function() { var i = parseInt(this.dataset.idx); self._lignes[i].numero_debut = this.value; self._recomputeQte(i, container); });
     });
     container.querySelectorAll('.num-fin').forEach(function(el) {
-      el.addEventListener('input', function() { self._lignes[parseInt(this.dataset.idx)].numero_fin = this.value; });
+      el.addEventListener('input', function() { var i = parseInt(this.dataset.idx); self._lignes[i].numero_fin = this.value; self._recomputeQte(i, container); });
     });
     container.querySelectorAll('.btn-rm-line').forEach(function(el) {
       el.addEventListener('click', function() {
@@ -327,6 +363,15 @@ var Fiches = {
     for (var i = 0; i < this._lignes.length; i++) {
       var l = this._lignes[i];
       if (!l.article_id) { UI.toast('Tous les articles sont requis.', 'error'); return; }
+      // Article numéroté avec taille de lot : la plage doit donner une quantité valide.
+      if (l.souches_par_unite) {
+        var q = this._lotQte(l.souches_par_unite, l.numero_debut, l.numero_fin);
+        if (q == null) {
+          UI.toast('Ligne ' + (i + 1) + ' (' + (l.article_nom || 'article') + ') : la plage de souches doit être un multiple de ' + l.souches_par_unite + ' (début ≤ fin).', 'error');
+          return;
+        }
+        l.quantite = q;
+      }
       arts.push({
         article_id: parseInt(l.article_id),
         quantite: l.quantite || 1,

@@ -247,7 +247,9 @@ function initDB(dbPath) {
     const cols = db.prepare('PRAGMA table_info(' + table + ')').all();
     if (!cols.some((c) => c.name === column)) {
       db.exec('ALTER TABLE ' + table + ' ADD COLUMN ' + column + ' ' + ddl);
+      return true; // colonne creee a l'instant (permet un seed unique)
     }
+    return false;
   }
   ensureColumn(db, 'mouvements', 'entree_id', 'INTEGER REFERENCES fiches_entree(id) ON DELETE SET NULL');
   ensureColumn(db, 'mouvements', 'numero_debut', 'TEXT');
@@ -313,6 +315,24 @@ function initDB(dbPath) {
   // Migration des unites : « piece » devient « unite », et les unites supprimees
   // (« boite », « flacon », « ramette ») sont remappees sur « unite ».
   db.exec("UPDATE articles SET unite = 'unite', updated_at = datetime('now','localtime') WHERE unite IN ('piece', 'boite', 'flacon', 'ramette')");
+
+  // Migration : souches numerotees. Taille de lot par categorie (calcul auto de la
+  // quantite depuis la plage de souches) + numerotation par localite (anti-chevauchement
+  // par destination pour les carnets « point de vente »). Seed unique a la creation des
+  // colonnes pour ne pas ecraser les reglages admin ulterieurs.
+  const addedLotCol = ensureColumn(db, 'categories', 'souches_par_unite', 'INTEGER DEFAULT NULL');
+  const addedLocCol = ensureColumn(db, 'articles', 'souche_par_localite', 'INTEGER NOT NULL DEFAULT 0');
+  if (addedLotCol) {
+    // Valeurs derivees des donnees reelles : Billets (electronique) = 500, Carnets = 50,
+    // Bon = 50 (les bons sont des carnets). Par nom actuel de la categorie.
+    db.exec("UPDATE categories SET souches_par_unite = 500 WHERE name = 'Billets'");
+    db.exec("UPDATE categories SET souches_par_unite = 50 WHERE name IN ('Carnets', 'Bon')");
+  }
+  if (addedLocCol) {
+    // Les carnets « point de vente » repartent de 001 par localite : chevauchement
+    // verifie par destination, pas globalement.
+    db.exec("UPDATE articles SET souche_par_localite = 1 WHERE nom LIKE '%point de vente%'");
+  }
 
   // Migration : les fiches d'entree creees avant le flag validee etaient toutes
   // deja validees (lignes en base). On les marque validee=1 pour ne pas les

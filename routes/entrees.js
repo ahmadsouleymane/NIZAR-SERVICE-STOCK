@@ -3,7 +3,7 @@ const express = require('express');
 const fs = require('fs');
 const path = require('path');
 const { authenticate, requireAdmin } = require('../middleware/auth');
-const { checkOverlap, recordSerie, parseNumero } = require('../services/series');
+const { checkOverlap, recordSerie, parseNumero, validerSouche, quantiteDepuisSouche } = require('../services/series');
 const { createUpload } = require('../services/uploads');
 const { logAudit } = require('../services/audit');
 const router = express.Router();
@@ -235,19 +235,22 @@ router.post('/:id/valider', authenticate, (req, res) => {
       `);
 
       for (const art of articles) {
-        const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
+        const article = db.prepare(`
+          SELECT a.*, c.souches_par_unite AS lot
+          FROM articles a LEFT JOIN categories c ON a.categorie_id = c.id WHERE a.id = ?
+        `).get(art.article_id);
         if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
-        const qte = parseInt(art.quantite, 10);
-        if (isNaN(qte) || qte <= 0) throw new Error('Quantite invalide pour ' + (article.nom || 'article #' + art.article_id) + '.');
+        let qte = parseInt(art.quantite, 10);
 
         if (article.type_article === 'numerote') {
-          if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
-            throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
-          }
+          const v = validerSouche(article.lot, art.numero_debut, art.numero_fin);
+          if (!v.ok) throw new Error(v.raison + ' — ' + article.nom);
+          if (article.lot) qte = quantiteDepuisSouche(article.lot, art.numero_debut, art.numero_fin);
           const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'entree');
           if (overlap) throw new Error('Chevauchement pour ' + article.nom + ' : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
           recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, qte, 'entree', req.params.id);
         }
+        if (isNaN(qte) || qte <= 0) throw new Error('Quantite invalide pour ' + (article.nom || 'article #' + art.article_id) + '.');
 
         insertLigne.run(req.params.id, art.article_id, qte, art.numero_debut || null, art.numero_fin || null, art.observation || null);
         insertMvt.run(art.article_id, qte, fiche.reference, req.user.id, fiche.fournisseur_id || null, req.params.id, art.numero_debut || null, art.numero_fin || null);
@@ -356,13 +359,16 @@ router.put('/:id', authenticate, requireAdmin, (req, res) => {
       const updateStock = db.prepare("UPDATE articles SET stock_actuel = stock_actuel + ?, updated_at = datetime('now','localtime') WHERE id = ?");
 
       for (const art of articles) {
-        const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(art.article_id);
+        const article = db.prepare(`
+          SELECT a.*, c.souches_par_unite AS lot
+          FROM articles a LEFT JOIN categories c ON a.categorie_id = c.id WHERE a.id = ?
+        `).get(art.article_id);
         if (!article) throw new Error('Article #' + art.article_id + ' introuvable.');
 
         if (article.type_article === 'numerote') {
-          if (parseNumero(art.numero_debut) === null || parseNumero(art.numero_fin) === null) {
-            throw new Error('La plage de numeros (debut-fin) est requise pour un article numerote : ' + article.nom + '.');
-          }
+          const v = validerSouche(article.lot, art.numero_debut, art.numero_fin);
+          if (!v.ok) throw new Error(v.raison + ' — ' + article.nom);
+          if (article.lot) art.quantite = quantiteDepuisSouche(article.lot, art.numero_debut, art.numero_fin);
           const overlap = checkOverlap(db, art.article_id, art.numero_debut, art.numero_fin, 'entree');
           if (overlap) throw new Error('Chevauchement pour ' + article.nom + ' : plage ' + art.numero_debut + '-' + art.numero_fin + ' deja enregistree (' + overlap.numero_debut + '-' + overlap.numero_fin + ').');
           recordSerie(db, art.article_id, art.numero_debut, art.numero_fin, art.quantite, 'entree', ficheId);

@@ -39,6 +39,11 @@ var Parametres = {
       '<p class="text-sm text-muted mb-sm">Mouvements de billets/carnets importes sans numero de souche valide — a corriger manuellement.</p>' +
       '<div id="anomalies-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
 
+      // Souches invalides (admin only) : plage presente mais incoherente
+      (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Souches invalides</h3></div>' +
+      '<p class="text-sm text-muted mb-sm">Plages de souches incohérentes (début &gt; fin, ou étendue qui n\'est pas un multiple exact de la taille de lot). Corriger début/fin ci-dessous — la quantité se recalcule et le stock est ajusté du delta.</p>' +
+      '<div id="souches-invalides-list">' + UI.renderSkeleton(3) + '</div></div>' : '') +
+
       // Sauvegarde de la base (admin only)
       (isAdmin ? '<div class="card"><div class="card-header"><h3 class="card-title">Sauvegarde de la base</h3></div>' +
       '<p class="text-sm text-muted mb-sm">Telecharger un instantane complet de la base (donnees + archives). Conservez ces fichiers dans un endroit sur.</p>' +
@@ -64,6 +69,7 @@ var Parametres = {
       this._loadUsers();
       this._loadAuditLog();
       this._loadAnomalies();
+      this._loadSouchesInvalides();
     }
     this._bindEvents();
   },
@@ -90,10 +96,11 @@ var Parametres = {
       .then(function(data) {
         var el = document.getElementById('categories-list');
         if (!data.categories.length) { el.innerHTML = '<p class="text-muted text-center">Aucune categorie.</p>'; return; }
-        var html = '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Description</th><th>Actions</th></tr></thead><tbody>';
+        var html = '<div class="table-wrapper"><table><thead><tr><th>Nom</th><th>Description</th><th>Souches/unité</th><th>Actions</th></tr></thead><tbody>';
         for (var i = 0; i < data.categories.length; i++) {
           var c = data.categories[i];
-          html += '<tr><td><strong>' + UI.escapeHtml(c.name) + '</strong></td><td>' + UI.escapeHtml(c.description || '-') + '</td>' +
+          var lotCell = (c.souches_par_unite != null) ? '<strong>' + c.souches_par_unite + '</strong>' : '<span class="text-muted">manuel</span>';
+          html += '<tr><td><strong>' + UI.escapeHtml(c.name) + '</strong></td><td>' + UI.escapeHtml(c.description || '-') + '</td><td>' + lotCell + '</td>' +
             '<td class="actions"><button class="btn btn-sm btn-secondary btn-edit-cat" data-id="' + c.id + '">Modifier</button>' +
             '<button class="btn btn-sm btn-danger btn-del-cat" data-id="' + c.id + '">Supprimer</button></td></tr>';
         }
@@ -114,8 +121,12 @@ var Parametres = {
   _showCategoryForm: function(existing) {
     var self = this;
     var isEdit = !!existing;
+    var lotVal = (existing && existing.souches_par_unite != null) ? existing.souches_par_unite : '';
     var html = '<div class="form-group"><label class="form-label">Nom *</label><input type="text" class="form-input" id="cat-name" value="' + (existing ? UI.escapeHtml(existing.name) : '') + '" required></div>' +
-      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cat-desc" rows="2">' + (existing ? UI.escapeHtml(existing.description || '') : '') + '</textarea></div>';
+      '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="cat-desc" rows="2">' + (existing ? UI.escapeHtml(existing.description || '') : '') + '</textarea></div>' +
+      '<div class="form-group"><label class="form-label">Souches par unité</label>' +
+      '<input type="number" class="form-input" id="cat-lot" min="1" step="1" value="' + lotVal + '" placeholder="ex: 50 (carnets), 500 (billets)">' +
+      '<span class="text-sm text-muted">Laisser vide pour un comptage manuel. Sinon la quantité d\'un article numéroté est calculée automatiquement depuis la plage de souches : (fin − début + 1) ÷ cette valeur.</span></div>';
 
     UI.modal(isEdit ? 'Modifier la categorie' : 'Ajouter une categorie', html, [
       { label: 'Annuler', cls: 'btn-secondary', callback: function(m) { m.close(); } },
@@ -123,7 +134,8 @@ var Parametres = {
         var name = document.getElementById('cat-name').value.trim();
         if (!name) { UI.toast('Nom requis.', 'error'); return; }
         var description = document.getElementById('cat-desc').value.trim();
-        var payload = { name: name, description: description || null };
+        var lotRaw = document.getElementById('cat-lot').value.trim();
+        var payload = { name: name, description: description || null, souches_par_unite: lotRaw === '' ? null : parseInt(lotRaw, 10) };
         var promise = isEdit ? API.updateCategory(existing.id, payload) : API.createCategory(payload);
         promise
           .then(function() { UI.toast(isEdit ? 'Categorie modifiee.' : 'Categorie ajoutee.', 'success'); m.close(); self._loadCategories(); })
@@ -187,6 +199,57 @@ var Parametres = {
     UI.confirm('Supprimer cette categorie ?')
       .then(function(ok) { if (!ok) return;
         API.deleteCategory(id).then(function() { UI.toast('Supprimee.', 'success'); self._loadCategories(); }).catch(function(err) { UI.toast(err.message, 'error'); }); });
+  },
+
+  // === Souches invalides ===
+  _loadSouchesInvalides: function() {
+    var self = this;
+    API.getAnomaliesSouches()
+      .then(function(data) { self._renderSouchesInvalides(data.anomalies); })
+      .catch(function(err) {
+        var el = document.getElementById('souches-invalides-list');
+        if (el) el.innerHTML = '<p class="text-muted text-center">' + UI.escapeHtml(err.message) + '</p>';
+      });
+  },
+
+  _renderSouchesInvalides: function(anomalies) {
+    var el = document.getElementById('souches-invalides-list');
+    if (!el) return;
+    if (!anomalies.length) { el.innerHTML = '<p class="text-muted text-center">Aucune souche invalide. 👍</p>'; return; }
+
+    var self = this;
+    var html = '<div class="table-wrapper"><table><thead><tr>' +
+      '<th>Date</th><th>Article</th><th>Catégorie</th><th>Localité</th><th>Plage actuelle</th><th>Problème</th><th>Correction</th>' +
+      '</tr></thead><tbody>';
+    for (var i = 0; i < anomalies.length; i++) {
+      var a = anomalies[i];
+      html += '<tr>' +
+        '<td>' + UI.formatDate(a.date) + '</td>' +
+        '<td>' + UI.escapeHtml(a.article_nom || '-') + '</td>' +
+        '<td>' + UI.escapeHtml(a.categorie || '-') + (a.lot ? ' <span class="text-sm text-muted">(lot ' + a.lot + ')</span>' : '') + '</td>' +
+        '<td>' + UI.escapeHtml(a.localite_nom || '-') + '</td>' +
+        '<td><span class="badge badge-danger">' + UI.escapeHtml((a.numero_debut || '?') + ' → ' + (a.numero_fin || '?')) + '</span></td>' +
+        '<td class="text-sm text-danger">' + UI.escapeHtml(a.raison || '') + '</td>' +
+        '<td style="display:flex;gap:6px;align-items:center">' +
+        '<input type="text" class="form-input si-debut" data-id="' + a.id + '" value="' + UI.escapeHtml(a.numero_debut || '') + '" placeholder="Début" style="width:100px;min-height:36px">' +
+        '<input type="text" class="form-input si-fin" data-id="' + a.id + '" value="' + UI.escapeHtml(a.numero_fin || '') + '" placeholder="Fin" style="width:100px;min-height:36px">' +
+        '<button class="btn btn-sm btn-primary btn-corriger-souche" data-id="' + a.id + '">Corriger</button>' +
+        '</td></tr>';
+    }
+    html += '</tbody></table></div>';
+    el.innerHTML = html;
+
+    el.querySelectorAll('.btn-corriger-souche').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var debut = el.querySelector('.si-debut[data-id="' + id + '"]').value.trim();
+        var fin = el.querySelector('.si-fin[data-id="' + id + '"]').value.trim();
+        if (!debut || !fin) { UI.toast('Début et fin requis.', 'error'); return; }
+        API.corrigerSouche(id, debut, fin)
+          .then(function() { UI.toast('Souche corrigée.', 'success'); self._loadSouchesInvalides(); })
+          .catch(function(err) { UI.toast(err.message, 'error'); });
+      });
+    });
   },
 
   // === Unites ===

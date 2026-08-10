@@ -151,6 +151,9 @@ var Articles = {
           '<div class="form-group"><label class="form-label">Prix unitaire</label><input type="number" class="form-input" id="art-prix" value="0" min="0" step="0.01"></div>' +
           '</div>' +
           '<div class="form-group"><label class="form-label">Fournisseur principal</label><select class="form-select" id="art-fourn">' + fournOptions + '</select></div>' +
+          '<div class="form-group"><label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+          '<input type="checkbox" id="art-souche-loc" style="width:auto;min-height:auto"> Numérotation par localité (les souches repartent de 001 pour chaque destination)</label>' +
+          '<span class="text-sm text-muted">Pour les carnets « point de vente » : le même numéro de souche sur deux localités différentes n\'est pas un conflit.</span></div>' +
           '<div class="form-group"><label class="form-label">Description</label><textarea class="form-textarea" id="art-desc" rows="2"></textarea></div>';
 
         var modal = UI.modal(title, formHtml, [
@@ -169,6 +172,7 @@ var Articles = {
             document.getElementById('art-min').value = a.stock_min;
             document.getElementById('art-prix').value = a.prix_unitaire;
             document.getElementById('art-fourn').value = a.fournisseur_id || '';
+            document.getElementById('art-souche-loc').checked = !!a.souche_par_localite;
             document.getElementById('art-desc').value = a.description || '';
           }).catch(function(err) { UI.toast(err.message, 'error'); modal.close(); });
         }
@@ -185,6 +189,7 @@ var Articles = {
       stock_min: parseInt(document.getElementById('art-min').value) || 0,
       prix_unitaire: parseFloat(document.getElementById('art-prix').value) || 0,
       fournisseur_id: document.getElementById('art-fourn').value || null,
+      souche_par_localite: document.getElementById('art-souche-loc').checked ? 1 : 0,
       description: document.getElementById('art-desc').value.trim() || null
     };
 

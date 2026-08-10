@@ -10,7 +10,7 @@ router.get('/', authenticate, (req, res) => {
   const { search, categorie_id, alerte } = req.query;
 
   let query = `
-    SELECT a.*, c.name as categorie_nom, f.nom as fournisseur_nom
+    SELECT a.*, c.name as categorie_nom, c.souches_par_unite as souches_par_unite, f.nom as fournisseur_nom
     FROM articles a
     LEFT JOIN categories c ON a.categorie_id = c.id
     LEFT JOIN fournisseurs f ON a.fournisseur_id = f.id
@@ -38,7 +38,7 @@ router.get('/', authenticate, (req, res) => {
 // POST /api/articles
 router.post('/', authenticate, (req, res) => {
   const db = req.db;
-  const { reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id } = req.body;
+  const { reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id, souche_par_localite } = req.body;
 
   if (!reference || !nom) {
     return res.status(400).json({ error: 'Reference et nom requis.' });
@@ -50,12 +50,12 @@ router.post('/', authenticate, (req, res) => {
   }
 
   const result = db.prepare(`
-    INSERT INTO articles (reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(reference, nom, categorie_id || null, description || null, unite || 'unite', stock_min || 10, prix_unitaire || 0, fournisseur_id || null);
+    INSERT INTO articles (reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id, souche_par_localite)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(reference, nom, categorie_id || null, description || null, unite || 'unite', stock_min || 10, prix_unitaire || 0, fournisseur_id || null, souche_par_localite ? 1 : 0);
 
   const article = db.prepare(`
-    SELECT a.*, c.name as categorie_nom, f.nom as fournisseur_nom
+    SELECT a.*, c.name as categorie_nom, c.souches_par_unite as souches_par_unite, f.nom as fournisseur_nom
     FROM articles a
     LEFT JOIN categories c ON a.categorie_id = c.id
     LEFT JOIN fournisseurs f ON a.fournisseur_id = f.id
@@ -70,7 +70,7 @@ router.post('/', authenticate, (req, res) => {
 router.get('/:id', authenticate, (req, res) => {
   const db = req.db;
   const article = db.prepare(`
-    SELECT a.*, c.name as categorie_nom, f.nom as fournisseur_nom
+    SELECT a.*, c.name as categorie_nom, c.souches_par_unite as souches_par_unite, f.nom as fournisseur_nom
     FROM articles a
     LEFT JOIN categories c ON a.categorie_id = c.id
     LEFT JOIN fournisseurs f ON a.fournisseur_id = f.id
@@ -108,7 +108,7 @@ router.put('/:id', authenticate, (req, res) => {
   const article = db.prepare('SELECT * FROM articles WHERE id = ?').get(req.params.id);
   if (!article) return res.status(404).json({ error: 'Article introuvable.' });
 
-  const { reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id } = req.body;
+  const { reference, nom, categorie_id, description, unite, stock_min, prix_unitaire, fournisseur_id, souche_par_localite } = req.body;
 
   if (reference && reference !== article.reference) {
     const dup = db.prepare('SELECT id FROM articles WHERE reference = ? AND id != ?').get(reference, req.params.id);
@@ -118,7 +118,7 @@ router.put('/:id', authenticate, (req, res) => {
   db.prepare(`
     UPDATE articles
     SET reference = ?, nom = ?, categorie_id = ?, description = ?, unite = ?,
-        stock_min = ?, prix_unitaire = ?, fournisseur_id = ?, updated_at = datetime('now','localtime')
+        stock_min = ?, prix_unitaire = ?, fournisseur_id = ?, souche_par_localite = ?, updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
     reference || article.reference,
@@ -129,11 +129,12 @@ router.put('/:id', authenticate, (req, res) => {
     stock_min !== undefined ? stock_min : article.stock_min,
     prix_unitaire !== undefined ? prix_unitaire : article.prix_unitaire,
     fournisseur_id !== undefined ? fournisseur_id : article.fournisseur_id,
+    souche_par_localite !== undefined ? (souche_par_localite ? 1 : 0) : article.souche_par_localite,
     req.params.id
   );
 
   const updated = db.prepare(`
-    SELECT a.*, c.name as categorie_nom, f.nom as fournisseur_nom
+    SELECT a.*, c.name as categorie_nom, c.souches_par_unite as souches_par_unite, f.nom as fournisseur_nom
     FROM articles a
     LEFT JOIN categories c ON a.categorie_id = c.id
     LEFT JOIN fournisseurs f ON a.fournisseur_id = f.id
