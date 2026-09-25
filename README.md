@@ -2,13 +2,7 @@
 
 Gestion de stock — Nizar Transport Voyageur.
 
-## 🛠 Stack
+## Stack
 
 - JavaScript
 - Node.js
-
----
-
-## 👤 Auteur
-
-**Ahmad Souleymane** — [@ahmadsouleymane](https://github.com/ahmadsouleymane)
